@@ -1,0 +1,2605 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDV Pro - Sistema de Punto de Venta</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for dashboard graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Animate.css for more polished animations -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <style>
+        /* General styles and tab content hiding */
+        .tab-content {
+            display: none;
+            /* Flexbox so children can take full height if needed */
+            flex-direction: column;
+            flex-grow: 1; /* Allows tab content to occupy available space */
+            overflow-y: auto; /* Allows internal scrolling if content is too long */
+        }
+        .tab-content.active {
+            display: flex; /* Changed to flex for active tab */
+        }
+
+        /* Sidebar Styling */
+        .sidebar {
+            width: 0; /* Hidden by default on mobile */
+            transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); /* Softer transition */
+            height: 100vh;
+            position: fixed; /* Use fixed for overlay on mobile */
+            left: 0;
+            top: 0;
+            z-index: 20;
+            overflow-x: hidden; /* Prevent horizontal scrollbar during transition */
+        }
+        .sidebar.open {
+            width: 256px; /* w-64 in Tailwind */
+        }
+
+        /* Hide labels by default and prepare them for opacity transition */
+        .sidebar .sidebar-label {
+            display: block; /* Use block to allow opacity transition */
+            opacity: 0; /* Start hidden */
+            transition: opacity 0.3s ease-in-out; /* Smooth appearance */
+            pointer-events: none; /* Prevent interaction when hidden */
+        }
+
+        /* Show label when sidebar is open */
+        .sidebar.open .sidebar-label {
+            opacity: 1; /* Smooth appearance when open */
+            pointer-events: auto; /* Allow interaction when visible */
+        }
+
+        /* Logo visibility adjustments */
+        #sidebarLogo {
+            display: none; /* Hidden by default */
+            margin: 0 auto; /* Center it when displayed */
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out, max-height 0.4s ease-in-out, max-width 0.4s ease-in-out; /* Added transform, max-height, max-width for animation */
+            max-height: 40px; /* Adjust as needed for better centering */
+            max-width: 60px; /* Adjust as needed for better centering */
+            object-fit: contain; /* Ensure the image fits */
+        }
+        #sidebarIcon, #sidebarTitle { /* Icon and Title (text) */
+            display: flex; /* Flex to keep them inline-block with labels */
+            align-items: center;
+            transition: opacity 0.3s ease-in-out; /* Smooth appearance */
+        }
+
+        /* Adjust logo/icon/title when sidebar is open or closed */
+        .sidebar.open #sidebarLogo {
+            display: none; /* Hide logo when sidebar is fully open */
+        }
+        .sidebar.open #sidebarIcon,
+        .sidebar.open #sidebarTitle {
+            display: flex; /* Show icon and title when sidebar is fully open */
+            opacity: 1; /* Ensure they are visible */
+        }
+        .sidebar:not(.open) #sidebarLogo {
+            display: block; /* Show logo when sidebar is collapsed */
+            opacity: 1;
+        }
+        .sidebar:not(.open) #sidebarIcon,
+        .sidebar:not(.open) #sidebarTitle {
+            display: none; /* Hide icon and title when sidebar is collapsed */
+            opacity: 0; /* Ensure they are hidden */
+        }
+
+        /* Desktop specific adjustments */
+        @media (min-width: 1024px) { /* lg breakpoint */
+            .sidebar {
+                width: 80px; /* Default collapsed state for desktop */
+                position: relative; /* Returns to document flow on desktop */
+            }
+            .sidebar.open {
+                width: 256px; /* Expanded state for desktop */
+            }
+
+            /* Desktop: When sidebar is collapsed (80px) */
+            .sidebar:not(.open) #sidebarLogo {
+                display: block; /* Show logo */
+                opacity: 1;
+                max-height: 40px; /* Smaller when collapsed */
+                max-width: 60px;
+            }
+            .sidebar.open #sidebarLogo { /* When sidebar is open */
+                display: none; /* Hide logo in favor of title/icon */
+            }
+
+            /* Desktop: When sidebar is open (256px) */
+            .sidebar.open #sidebarIcon,
+            .sidebar.open #sidebarTitle {
+                display: flex; /* Show icon and title */
+                opacity: 1;
+            }
+            .sidebar:not(.open) #sidebarIcon,
+            .sidebar:not(.open) #sidebarTitle {
+                display: none; /* Hide icon and title when collapsed */
+            }
+            .sidebar:not(.open) .sidebar-label { /* Ensure labels are hidden when collapsed */
+                opacity: 0;
+            }
+
+            .lg\:hidden {
+                display: none !important;
+            }
+        }
+
+        /* Main Content Styling */
+        #mainContent {
+            flex-grow: 1; /* Already flex-1, ensures it occupies remaining space */
+            transition: margin-left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+            /* Initially, no margin for mobile or desktop */
+            margin-left: 0;
+        }
+
+        /* Mobile: Push content when sidebar is open */
+        /* This class will be added/removed by JavaScript */
+        .main-content-shifted {
+            margin-left: 256px; /* Push by sidebar width */
+        }
+
+        @media (min-width: 1024px) {
+            /* Desktop: Main content starts after the sidebar, no explicit margin needed as it's flex-1 */
+            #mainContent {
+                margin-left: 0 !important; /* Overrides any margin applied by JS for desktop */
+            }
+        }
+
+        /* Ensure body is always flex and takes full screen */
+        body {
+            display: flex;
+            min-height: 100vh; /* Ensures it takes at least viewport height */
+            width: 100vw; /* Ensures it takes full viewport width */
+            overflow-x: hidden; /* Prevent horizontal scrollbars on body */
+            /* Default primary color variables */
+            --color-primary-500: rgb(59, 130, 246); /* Tailwind blue-500 */
+            --color-primary-600: rgb(37, 99, 235); /* Tailwind blue-600 */
+            --color-primary-100: rgb(219, 234, 254); /* Tailwind blue-100 */
+            --color-primary-text: rgb(29, 78, 216); /* Tailwind blue-700 */
+        }
+
+        /* Dynamically apply primary colors */
+        .bg-primary-500 { background-color: var(--color-primary-500); }
+        .hover\:bg-primary-600:hover { background-color: var(--color-primary-600); }
+        .text-primary-600 { color: var(--color-primary-text); }
+        .bg-primary-100 { background-color: var(--color-primary-100); }
+        /* Add other color classes that use primary color */
+        .border-primary-500 { border-color: var(--color-primary-500); }
+        .focus\:ring-primary-500:focus { --tw-ring-color: var(--color-primary-500); }
+        .focus\:border-primary-500:focus { border-color: var(--color-primary-500); }
+
+        /* Lucide Icons - kept as SVGs for demonstration */
+        .lucide {
+            display: inline-block;
+            width: 1em;
+            height: 1em;
+            stroke-width: 2;
+            stroke: currentColor;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        /* Dashboard */
+        .lucide-layout-dashboard { display: inline-block; }
+        /* Sales */
+        .lucide-shopping-cart { display: inline-block; }
+        /* Inventory (new custom icon) */
+        /* Placeholder for the custom SVG icon - will be inline */
+        /* Finances */
+        .lucide-dollar-sign { display: inline-block; }
+        /* Movements */
+        .lucide-clipboard-list { display: inline-block; }
+        /* General */
+        .lucide-plus { display: inline-block; }
+        .lucide-trash-2 { display: inline-block; }
+        .lucide-edit { display: inline-block; }
+        .lucide-x { display: inline-block; }
+        .lucide-search { display: inline-block; }
+        .lucide-x-circle { display: inline-block; }
+        .lucide-history { display: inline-block; }
+        .lucide-coins { display: inline-block; }
+        .lucide-rotate-ccw { display: inline-block; }
+        .lucide-check-circle { display: inline-block; }
+        .lucide-trending-up { display: inline-block; }
+        .lucide-banknote { display: inline-block; }
+        .lucide-alert-circle { display: inline-block; }
+        .lucide-chevrons-right { display: inline-block; }
+        .lucide-credit-card { display: inline-block; }
+        .lucide-arrow-up-from-line { display: inline-block; }
+        .lucide-arrow-down-to-line { display: inline-block; }
+        .lucide-receipt { display: inline-block; }
+        .lucide-menu { display: inline-block; }
+        /* Settings Icon */
+        .lucide-settings { display: inline-block; }
+
+        /* Animation for new product row in inventory table */
+        @keyframes fadeInSlideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in-slide-down {
+            animation: fadeInSlideDown 0.5s ease-out;
+        }
+
+        /* Animation for cart item addition (bounce) */
+        .cart-item-added.animate__fadeInUp {
+            animation-duration: 0.4s; /* Control speed */
+        }
+
+        /* Animation for cart item removal (slide out and fade) */
+        .cart-item-removing.animate__fadeOutRight {
+            animation-duration: 0.4s;
+        }
+
+        /* Animation for inventory product removal (slide out and fade) */
+        .inventory-item-removing.animate__fadeOutUp {
+            animation-duration: 0.4s;
+        }
+
+        /* Modal specific positioning for better control */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            z-index: 50; /* Adjust as needed to be above other content */
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+        .modal.active {
+            display: flex;
+        }
+    </style>
+</head>
+<body class="flex h-screen bg-gray-50 font-sans">
+
+    <!-- Cash Modal - Z-index higher to ensure it's always on top -->
+    <div id="cashModal" class="fixed inset-0 bg-black bg-opacity-60 z-[100] flex justify-center items-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center p-4 border-b border-gray-200">
+                <h3 class="text-xl font-bold text-gray-800">Iniciar Día</h3>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-4">
+                <p>Ingresa el monto inicial de efectivo en caja para comenzar el día.</p>
+                <input type="number" id="initialCashInput" placeholder="0.00" class="w-full p-3 border rounded-lg text-lg" />
+                <button id="startDayButton" class="w-full bg-primary-500 text-white py-3 rounded-lg font-bold hover:bg-primary-600 transition disabled:bg-gray-400">Comenzar</button>
+            </div>
+        </div>
+    </div>
+
+    <aside id="sidebar" class="sidebar bg-white border-r border-gray-200 flex flex-col">
+        <div class="flex items-center justify-center h-20 border-b border-gray-200 flex-shrink-0 relative">
+            <!-- Logo will replace text if available -->
+            <img id="sidebarLogo" src="" alt="Logo PDV Pro" class="h-10 object-contain absolute opacity-0">
+            <svg id="sidebarIcon" class="lucide lucide-shopping-cart text-primary-600" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+            <h1 id="sidebarTitle" class="text-2xl font-bold ml-2 text-gray-800 sidebar-label">PDV Pro</h1>
+        </div>
+        <ul class="flex-grow p-2">
+            <li>
+                <button class="flex items-center w-full p-3 rounded-lg transition-all tab-button active" data-tab="dashboard">
+                    <svg class="lucide lucide-layout-dashboard flex-shrink-0" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                    <span class="font-semibold ml-4 whitespace-nowrap sidebar-label">Dashboard</span>
+                </button>
+            </li>
+            <li>
+                <button class="flex items-center w-full p-3 rounded-lg transition-all tab-button" data-tab="ventas">
+                    <svg class="lucide lucide-shopping-cart flex-shrink-0" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+                    <span class="font-semibold ml-4 whitespace-nowrap sidebar-label">Ventas</span>
+                </button>
+            </li>
+            <li>
+                <button class="flex items-center w-full p-3 rounded-lg transition-all tab-button" data-tab="inventario">
+                    <!-- NEW Custom Inventory Icon: A stack of packages -->
+                    <svg class="flex-shrink-0" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M7 17l-5 3v-10l5-3 5 3v10z"/>
+                        <path d="M17 17l-5 3v-10l5-3 5 3v10z"/>
+                        <path d="M12 14l5-3 5 3"/>
+                        <path d="M12 14l-5-3-5 3"/>
+                        <path d="M12 8l5-3 5 3"/>
+                        <path d="M12 8l-5-3-5 3"/>
+                    </svg>
+                    <span class="font-semibold ml-4 whitespace-nowrap sidebar-label">Inventario</span>
+                </button>
+            </li>
+            <li>
+                <button class="flex items-center w-full p-3 rounded-lg transition-all tab-button" data-tab="finanzas">
+                    <svg class="lucide lucide-dollar-sign flex-shrink-0" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    <span class="font-semibold ml-4 whitespace-nowrap sidebar-label">Finanzas</span>
+                </button>
+            </li>
+            <li>
+                <button class="flex items-center w-full p-3 rounded-lg transition-all tab-button" data-tab="movimientos">
+                    <svg class="lucide lucide-clipboard-list flex-shrink-0" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>
+                    <span class="font-semibold ml-4 whitespace-nowrap sidebar-label">Movimientos</span>
+                </button>
+            </li>
+            <li>
+                <button class="flex items-center w-full p-3 rounded-lg transition-all tab-button" data-tab="ajustes">
+                    <svg class="lucide lucide-settings flex-shrink-0" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.09.15a2 2 0 0 1 0 2.73l-.09.15a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.09-.15a2 2 0 0 1 0-2.73l.09-.15a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span class="font-semibold ml-4 whitespace-nowrap sidebar-label">Ajustes</span>
+                </button>
+            </li>
+        </ul>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-screen overflow-hidden" id="mainContent">
+        <header class="lg:hidden flex items-center h-16 bg-white border-b border-gray-200 px-4 flex-shrink-0">
+            <button id="menuButton">
+                <svg class="lucide lucide-menu text-gray-600" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+            </button>
+            <h2 id="activeTabTitle" class="font-bold text-xl ml-4 capitalize">Dashboard</h2>
+        </header>
+
+        <div id="content" class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 md:p-8 flex flex-col">
+            <div id="dashboard" class="tab-content active">
+                <div class="flex items-center mb-4 flex-shrink-0">
+                    <svg class="lucide lucide-layout-dashboard mr-3 text-primary-500" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-800">Dashboard General</h2>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 mb-6 flex-shrink-0">
+                    <h3 class="text-lg md:text-xl font-semibold text-gray-700 mb-4">Filtros del Dashboard</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <input type="date" name="dateFrom" id="dashboardDateFrom" class="w-full p-2 border rounded-lg" title="Fecha de inicio"/>
+                        <input type="date" name="dateTo" id="dashboardDateTo" class="w-full p-2 border rounded-lg" title="Fecha de fin"/>
+                        <div class="relative sm:col-span-2 lg:col-span-1">
+                            <svg class="lucide lucide-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input type="text" name="searchTerm" id="dashboardSearchTerm" placeholder="Buscar producto/categoría..." class="w-full p-2 pl-10 border rounded-lg" />
+                        </div>
+                        <button id="clearDashboardFilters" class="flex items-center justify-center bg-gray-600 text-white p-2 rounded-lg hover:bg-gray-700 transition">
+                            <svg class="lucide lucide-x-circle mr-2" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+                            Limpiar
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8 flex-shrink-0">
+                    <div class="text-left"><div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 flex-1 min-w-[150px] h-full"><div class="flex items-center"><div class="p-3 rounded-full mr-4 bg-green-500"><svg class="lucide lucide-trending-up text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div><div><p class="text-sm text-gray-500 font-medium">Ventas Totales</p><p class="text-xl md:text-2xl font-bold text-gray-800">$<span id="totalSalesDashboard">0.00</span></p></div></div></div></div>
+                    <div class="text-left"><div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 flex-1 min-w-[150px] h-full"><div class="flex items-center"><div class="p-3 rounded-full mr-4 bg-primary-500"><svg class="lucide lucide-banknote text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h4"/><path d="M2 18h4"/><path d="M22 12h-4"/><path d="M12 2h-.5a2.5 2.5 0 0 0-2.5 2.5v15a2.5 2.5 0 0 0 2.5 2.5h1a2.5 2.5 0 0 0 2.5-2.5v-15A2.5 2.5 0 0 0 13.5 2H12Z"/><path d="M3 3v18"/><path d="M21 3v18"/><path d="M12 7v10"/></svg></div><div><p class="text-sm text-gray-500 font-medium">Transacciones</p><p class="text-xl md:text-2xl font-bold text-gray-800" id="totalTransactionsDashboard">0</p></div></div></div></div>
+                    <button class="text-left cursor-pointer hover:scale-105 transition-transform" id="lowStockButton">
+                        <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 flex-1 min-w-[150px] h-full">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-full mr-4 bg-red-500">
+                                    <svg class="lucide lucide-alert-circle text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500 font-medium">Bajo Stock</p><p class="text-xl md:text-2xl font-bold text-gray-800" id="lowStockCount">0</p>
+                                </div>
+                            </div>
+                        </div>
+                    </button>
+                    <div class="text-left"><div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 flex-1 min-w-[150px] h-full"><div class="flex items-center"><div class="p-3 rounded-full mr-4 bg-yellow-500"><svg class="lucide lucide-chevrons-right text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 17 5-5-5-5"/><path d="m6 17 5-5-5-5"/></svg></div><div><p class="text-sm text-gray-500 font-medium">Ticket Promedio</p><p class="text-xl md:text-2xl font-bold text-gray-800">$<span id="averageTicketDashboard">0.00</span></p></div></div></div></div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-grow">
+                    <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6">
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-700 mb-4">Rendimiento de Ventas</h3>
+                        <div class="chart-container" style="position: relative; height:250px; width:100%">
+                            <canvas id="salesPerformanceChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6">
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-700 mb-4">Top 5 Productos Vendidos</h3>
+                        <div class="chart-container" style="position: relative; height:250px; width:100%">
+                            <canvas id="topProductsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="ventas" class="tab-content flex-col lg:flex-row h-full">
+                <div class="w-full lg:w-3/5 p-4 flex flex-col flex-grow">
+                    <div class="flex items-center mb-4 flex-shrink-0">
+                        <svg class="lucide lucide-shopping-cart mr-3 text-primary-500" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+                        <h2 class="text-xl md:text-2xl font-bold text-gray-800">Ventas</h2>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-4 mb-4 flex-shrink-0">
+                        <div class="relative flex-grow">
+                            <svg class="lucide lucide-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input type="text" id="salesSearchInput" placeholder="Buscar por Nombre o ID..." class="w-full p-3 pl-10 border rounded-lg" />
+                        </div>
+                        <div class="flex-shrink-0 flex gap-2">
+                            <button class="flex-1 flex items-center justify-center text-sm bg-gray-200 text-gray-800 font-semibold px-4 py-3 rounded-lg hover:bg-gray-300" data-modal-target="historyModal">
+                                <svg class="lucide lucide-history mr-2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.76 2.75M12 7v5l2 2"/></svg>
+                                Historial
+                            </button>
+                            <button class="flex-1 flex items-center justify-center text-sm bg-yellow-400 text-yellow-900 font-semibold px-4 py-3 rounded-lg hover:bg-yellow-500" data-modal-target="cashMgmtModal">
+                                <svg class="lucide lucide-coins mr-2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="7"/><path d="M12.25 17.5L6.5 22.25C4.48 20.8 3 19.34 3 12c0-3.5 1.5-6.88 3-9.5L13.75 6.5"/></svg>
+                                Gestionar Caja
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Container for category buttons -->
+                    <div id="categoryButtonsContainer" class="flex flex-wrap gap-2 mb-4">
+                        <!-- Category buttons will be rendered here by JavaScript -->
+                    </div>
+                    <div id="productsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 overflow-y-auto flex-grow">
+                        <!-- Product cards will be rendered here by JavaScript -->
+                    </div>
+                </div>
+                <div class="w-full lg:w-2/5 bg-white p-4 lg:p-6 flex flex-col shadow-inner flex-grow">
+                    <h3 class="text-2xl font-bold text-gray-800 mb-4 flex-shrink-0">Carrito</h3>
+                    <div id="cartItems" class="flex-grow overflow-y-auto pr-2 min-h-[150px]">
+                        <p class="text-gray-500 text-center mt-8" id="emptyCartMessage">El carrito está vacío.</p>
+                    </div>
+                    <div class="border-t pt-4 mt-4 flex-shrink-0">
+                        <div class="flex justify-between items-center text-2xl font-bold mb-4">
+                            <span>Total:</span><span id="cartTotal">$0.00</span>
+                        </div>
+                        <button id="completeSaleButton" class="w-full bg-green-500 text-white py-3 rounded-lg text-lg font-bold hover:bg-green-600 transition disabled:bg-gray-400 disabled:cursor-not-allowed">Completar Venta</button>
+                    </div>
+                </div>
+
+                <div id="paymentModal" class="modal">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+                        <div class="flex justify-between items-center p-4 border-b border-gray-200">
+                            <h3 class="text-xl font-bold text-gray-800">Procesar Pago</h3>
+                            <button class="text-gray-400 hover:text-gray-600 close-modal" data-modal-target="paymentModal">
+                                <svg class="lucide lucide-x" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </div>
+                        <div class="p-6 overflow-y-auto space-y-4">
+                            <div class="grid grid-cols-3 gap-4">
+                                <button id="paymentMethodCash" class="py-3 rounded-lg font-semibold bg-primary-500 text-white payment-method-button active" data-method="Efectivo">Efectivo</button>
+                                <button id="paymentMethodCard" class="py-3 rounded-lg font-semibold bg-gray-200 payment-method-button" data-method="Tarjeta">Tarjeta</button>
+                                <button id="paymentMethodTransfer" class="py-3 rounded-lg font-semibold bg-gray-200 payment-method-button" data-method="Transferencia">Transferencia</button>
+                            </div>
+                            <div id="cashPaymentFields">
+                                <label for="amountPaidInput" class="font-semibold text-gray-700">Paga con:</label>
+                                <input type="number" id="amountPaidInput" placeholder="0.00" class="w-full p-3 border rounded-lg mt-1 text-lg" />
+                            </div>
+                            <div class="bg-green-100 p-4 rounded-lg text-center" id="changeDueDisplay">
+                                <p class="text-gray-700">Cambio a devolver:</p>
+                                <p class="text-2xl font-bold text-green-700" id="changeDue">$0.00</p>
+                            </div>
+                            <button id="finalizeSaleButton" class="w-full bg-green-500 text-white py-3 rounded-lg text-lg font-bold hover:bg-green-600 transition disabled:bg-gray-400">Finalizar Venta</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="cashMgmtModal" class="modal">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+                        <div class="flex justify-between items-center p-4 border-b border-gray-200">
+                            <h3 class="text-xl font-bold text-gray-800">Gestionar Efectivo en Caja</h3>
+                            <button class="text-gray-400 hover:text-gray-600 close-modal" data-modal-target="cashMgmtModal">
+                                <svg class="lucide lucide-x" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </div>
+                        <div class="p-6 overflow-y-auto space-y-4">
+                            <select id="cashMovementType" class="w-full p-3 border rounded-lg bg-white">
+                                <option value="gasto">Registrar Gasto (Proveedor, etc.)</option>
+                                <option value="retiro">Retirar Dinero de Caja</option>
+                                <option value="ingreso">Añadir Dinero a Caja</option>
+                            </select>
+                            <input type="number" id="cashMovementAmount" placeholder="Monto" class="w-full p-3 border rounded-lg"/>
+                            <input type="text" id="cashMovementDescription" placeholder="Descripción (Ej: Proveedor Coca-Cola)" class="w-full p-3 border rounded-lg"/>
+                            <button id="saveCashMovementButton" class="w-full bg-primary-500 text-white py-3 rounded-lg font-bold hover:bg-primary-600 transition">Guardar Movimiento</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="historyModal" class="modal">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+                        <div class="flex justify-between items-center p-4 border-b border-gray-200">
+                            <h3 class="text-xl font-bold text-gray-800">Historial de Ventas</h3>
+                            <button class="text-gray-400 hover:text-gray-600 close-modal" data-modal-target="historyModal">
+                                <svg class="lucide lucide-x" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </div>
+                        <div id="salesHistoryContent" class="p-6 overflow-y-auto space-y-4">
+                            <p class="text-gray-500 text-center">No hay ventas registradas.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Confirmation Modal (Correctly placed, only triggered by JS for product deletion) -->
+                <div id="confirmationModal" class="modal">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+                        <div class="flex justify-between items-center p-4 border-b border-gray-200">
+                            <h3 class="text-xl font-bold text-gray-800" id="confirmationModalTitle">Confirmar Acción</h3>
+                            <button class="text-gray-400 hover:text-gray-600 close-modal" data-modal-target="confirmationModal">
+                                <svg class="lucide lucide-x" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </div>
+                        <div class="p-6 overflow-y-auto">
+                            <p class="text-gray-600 mb-6" id="confirmationModalMessage">¿Estás seguro de que quieres realizar esta acción?</p>
+                            <div class="flex justify-end gap-4">
+                                <button class="px-6 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 font-semibold close-modal" data-modal-target="confirmationModal">No</button>
+                                <button class="px-6 py-2 rounded-lg text-white font-semibold bg-red-500 hover:bg-red-600" id="confirmActionButton">Sí</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="saleSuccessModal" class="modal">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+                        <div class="flex justify-between items-center p-4 border-b border-gray-200">
+                            <h3 class="text-xl font-bold text-gray-800">Transacción Exitosa</h3>
+                            <button class="text-gray-400 hover:text-gray-600 close-modal" data-modal-target="saleSuccessModal">
+                                <svg class="lucide lucide-x" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </div>
+                        <div class="p-6 overflow-y-auto text-center">
+                            <svg class="lucide lucide-check-circle text-green-500 mx-auto mb-4" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+                            <h3 class="text-2xl font-bold">¡Venta Registrada!</h3>
+                            <p class="text-lg text-gray-600 mt-2">Total: $<span id="saleSuccessTotal">0.00</span></p>
+                            <p class="text-lg text-gray-600 mt-1">Cambio: $<span id="saleSuccessChange">0.00</span></p>
+                            <button class="mt-6 w-full bg-primary-500 text-white py-3 rounded-lg font-bold hover:bg-primary-600 transition close-modal" data-modal-target="saleSuccessModal">Aceptar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="inventario" class="tab-content">
+                <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 flex-shrink-0">
+                    <div class="flex items-center">
+                        <!-- NEW Custom Inventory Icon: A stack of packages -->
+                        <svg class="mr-3 text-primary-500" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M7 17l-5 3v-10l5-3 5 3v10z"/>
+                            <path d="M17 17l-5 3v-10l5-3 5 3v10z"/>
+                            <path d="M12 14l5-3 5 3"/>
+                            <path d="M12 14l-5-3-5 3"/>
+                            <path d="M12 8l5-3 5 3"/>
+                            <path d="M12 8l-5-3-5 3"/>
+                        </svg>
+                        <h2 class="text-xl md:text-2xl font-bold text-gray-800">Inventario</h2>
+                    </div>
+                    <button class="flex items-center bg-primary-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-primary-600 transition w-full sm:w-auto" data-modal-target="productModal" id="addProductButton">
+                        <svg class="lucide lucide-plus mr-2" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                        Añadir Producto
+                    </button>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 mb-6 flex-shrink-0">
+                    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                        <div class="relative md:col-span-3 lg:col-span-2">
+                            <svg class="lucide lucide-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input type="text" id="inventorySearchInput" placeholder="Buscar por nombre..." class="w-full p-2 pl-10 border rounded-lg" />
+                        </div>
+                        <select id="inventoryCategoryFilter" class="w-full p-2 border rounded-lg bg-white">
+                            <option value="all">Todas las Categorías</option>
+                            <!-- Dynamic categories will be added here -->
+                        </select>
+                        <input type="number" id="inventoryStockFilter" placeholder="Stock máximo" class="w-full p-2 border rounded-lg" />
+                        <button id="clearInventoryFilters" class="flex items-center justify-center bg-gray-600 text-white p-2 rounded-lg hover:bg-gray-700 transition">
+                            <svg class="lucide lucide-x-circle mr-2" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+                            Limpiar Filtros
+                        </button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow overflow-x-auto flex-grow">
+                    <table class="min-w-full">
+                        <thead class="bg-gray-100 sticky top-0 z-10">
+                            <tr>
+                                <th class="p-4 text-left"><input type="checkbox" class="h-5 w-5 rounded"/></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Imagen</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID / Nombre</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Costo</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTableBody" class="divide-y divide-gray-200">
+                            <!-- Inventory rows will be rendered here by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="productModal" class="modal">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+                        <div class="flex justify-between items-center p-4 border-b border-gray-200">
+                            <h3 class="text-xl font-bold text-gray-800">Añadir/Editar Producto</h3>
+                            <button class="text-gray-400 hover:text-gray-600 close-modal" data-modal-target="productModal">
+                                <svg class="lucide lucide-x" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </div>
+                        <div class="p-6 overflow-y-auto space-y-4">
+                            <input type="hidden" id="productId" />
+                            <input type="text" id="productSku" placeholder="ID del Producto (SKU, opcional)" class="w-full p-3 border rounded-lg" />
+                            <input type="text" id="productName" placeholder="Nombre del Producto" class="w-full p-3 border rounded-lg" />
+                            <input type="text" id="productCategory" placeholder="Categoría" class="w-full p-3 border rounded-lg" />
+                            <div class="grid grid-cols-2 gap-4">
+                                <input type="number" id="productPrice" placeholder="Precio de Venta" class="w-full p-3 border rounded-lg" />
+                                <input type="number" id="productCost" placeholder="Costo" class="w-full p-3 border rounded-lg" />
+                            </div>
+                            <input type="number" id="productStock" placeholder="Stock" class="w-full p-3 border rounded-lg" />
+                            
+                            <!-- Image Input Options -->
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Imagen del Producto:</label>
+                                <div class="flex items-center space-x-4 mb-3">
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input type="radio" name="imageSource" value="url" class="form-radio text-primary-600 h-4 w-4" checked>
+                                        <span class="ml-2 text-gray-700">Usar URL</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input type="radio" name="imageSource" value="file" class="form-radio text-primary-600 h-4 w-4">
+                                        <span class="ml-2 text-gray-700">Subir Archivo</span>
+                                    </label>
+                                </div>
+                                <input type="url" id="productImageURL" placeholder="URL de la imagen (ej: https://ejemplo.com/imagen.jpg)" class="w-full p-3 border rounded-lg focus:ring-primary-500 focus:border-primary-500" />
+                                <input type="file" id="productImageFile" accept="image/*" class="w-full p-3 border rounded-lg mt-2 hidden" />
+                                <div id="imagePreviewContainer" class="mt-4 flex justify-center items-center h-32 w-32 border border-gray-300 rounded-lg overflow-hidden bg-gray-50 mx-auto">
+                                    <img id="productImagePreview" src="" alt="Previsualización de Imagen" class="max-w-full max-h-full object-contain hidden">
+                                    <span id="noImageText" class="text-gray-400 text-sm">No hay imagen</span>
+                                </div>
+                            </div>
+
+                            <button id="saveProductButton" class="w-full bg-green-500 text-white py-3 rounded-lg font-bold hover:bg-green-600 transition">Guardar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="finanzas" class="tab-content">
+                <div class="flex items-center mb-4 flex-shrink-0">
+                    <svg class="lucide lucide-dollar-sign mr-3 text-primary-500" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-800">Finanzas</h2>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 mb-6 flex-shrink-0">
+                    <h3 class="text-lg md:text-xl font-semibold text-gray-700 mb-4">Filtros</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <input type="date" name="dateFrom" id="financeDateFrom" class="w-full p-2 border rounded-lg" />
+                        <input type="date" name="dateTo" id="financeDateTo" class="w-full p-2 border rounded-lg" />
+                        <button id="clearFinanceFilters" class="flex items-center justify-center bg-gray-600 text-white p-2 rounded-lg hover:bg-gray-700 transition">
+                            <svg class="lucide lucide-x-circle mr-2" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+                            Limpiar y ver Hoy
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6 mb-8 flex-shrink-0">
+                    <div class="text-left"><div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 flex-1 min-w-[150px] h-full"><div class="flex items-center"><div class="p-3 rounded-full mr-4 bg-gray-500"><svg class="lucide lucide-coins text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="7"/><path d="M12.25 17.5L6.5 22.25C4.48 20.8 3 19.34 3 12c0-3.5 1.5-6.88 3-9.5L13.75 6.5"/></svg></div><div><p class="text-sm text-gray-500 font-medium">Caja Inicial (Día)</p><p class="text-xl md:text-2xl font-bold text-gray-800">$<span id="initialCashDisplay">0.00</span></p></div></div></div></div>
+                    <div class="text-left"><div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 flex-1 min-w-[150px] h-full"><div class="flex items-center"><div class="p-3 rounded-full mr-4 bg-green-500"><svg class="lucide lucide-trending-up text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div><div><p class="text-sm text-gray-500 font-medium">Ingresos Totales</p><p class="text-xl md:text-2xl font-bold text-gray-800">$<span id="totalIncomeDisplay">0.00</span></p></div></div></div></div>
+                    <div class="text-left"><div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 flex-1 min-w-[150px] h-full"><div class="flex items-center"><div class="p-3 rounded-full mr-4 bg-primary-500"><svg class="lucide lucide-dollar-sign text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div><p class="text-sm text-gray-500 font-medium">Ganancia</p><p class="text-xl md:text-2xl font-bold text-gray-800">$<span id="profitDisplay">0.00</span></p></div></div></div></div>
+                    <div class="text-left"><div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 flex-1 min-w-[150px] h-full"><div class="flex items-center"><div class="p-3 rounded-full mr-4 bg-cyan-500"><svg class="lucide lucide-credit-card text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg></div><div><p class="text-sm text-gray-500 font-medium">Dinero en Línea</p><p class="text-xl md:text-2xl font-bold text-gray-800">$<span id="onlineMoneyDisplay">0.00</span></p></div></div></div></div>
+                    <div class="text-left"><div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 flex-1 min-w-[150px] h-full"><div class="flex items-center"><div class="p-3 rounded-full mr-4 bg-purple-500"><svg class="lucide lucide-banknote text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h4"/><path d="M2 18h4"/><path d="M22 12h-4"/><path d="M12 2h-.5a2.5 2.5 0 0 0-2.5 2.5v15a2.5 2.5 0 0 0 2.5 2.5h1a2.5 2.5 0 0 0 2.5-2.5v-15A2.5 2.5 0 0 0 13.5 2H12Z"/><path d="M3 3v18"/><path d="M21 3v18"/><path d="M12 7v10"/></svg></div><div><p class="text-sm text-gray-500 font-medium">Efectivo en Caja (Estimado)</p><p class="text-xl md:text-2xl font-bold text-gray-800">$<span id="cashInDrawerDisplay">0.00</span></p></div></div></div></div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-grow">
+                    <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6">
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-700 mb-4">Detalle de Ventas</h3>
+                        <div class="overflow-x-auto h-64">
+                            <table class="min-w-full">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Venta</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Método</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesDetailTableBody" class="bg-white divide-y divide-gray-200">
+                                    <tr id="noSalesDetailMessage">
+                                        <td colspan="4" class="px-6 py-4 whitespace-nowrap text-center text-gray-500">No hay ventas en el período seleccionado.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6">
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-700 mb-4">Movimientos de Caja</h3>
+                        <div class="overflow-x-auto h-64">
+                            <table class="min-w-full">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descripción</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cashMovementTableBody" class="bg-white divide-y divide-gray-200">
+                                    <tr id="noCashMovementMessage">
+                                        <td colspan="4" class="px-6 py-4 whitespace-nowrap text-center text-gray-500">No hay movimientos de caja en el período seleccionado.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="movimientos" class="tab-content">
+                <div class="flex items-center mb-4 flex-shrink-0">
+                    <svg class="lucide lucide-clipboard-list mr-3 text-primary-500" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-800">Registro de Movimientos</h2>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 mb-6 flex-shrink-0">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <input type="date" name="dateFrom" id="movementsDateFrom" class="w-full p-2 border rounded-lg" />
+                        <input type="date" name="dateTo" id="movementsDateTo" class="w-full p-2 border rounded-lg" />
+                        <select id="movementsTypeFilter" class="w-full p-2 border rounded-lg bg-white">
+                            <option value="all">Todos los Movimientos</option>
+                            <option value="Venta Realizada">Venta Realizada</option>
+                            <option value="Venta Anulada">Venta Anulada</option>
+                            <option value="Producto Añadido">Producto Añadido</option>
+                            <option value="Producto Editado">Producto Editado</option>
+                            <option value="Producto Eliminado">Producto Eliminado</option>
+                            <option value="Ingreso a Caja">Ingreso a Caja</option>
+                            <option value="Retiro de Caja">Retiro de Caja</option>
+                            <option value="Gasto Registrado">Gasto Registrado</option>
+                        </select>
+                        <button id="clearMovementsFilters" class="flex items-center justify-center bg-gray-600 text-white p-2 rounded-lg hover:bg-gray-700 transition">
+                            <svg class="lucide lucide-x-circle mr-2" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+                            Limpiar
+                        </button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 flex-grow overflow-y-auto">
+                    <div class="space-y-4" id="movementsLog">
+                        <p class="text-center text-gray-500">No hay movimientos registrados.</p>
+                        <!-- Movement entries will be dynamically added here -->
+                    </div>
+                </div>
+            </div>
+
+            <div id="ajustes" class="tab-content flex-col">
+                <div class="flex items-center mb-4 flex-shrink-0">
+                    <svg class="lucide lucide-settings mr-3 text-primary-500" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.09.15a2 2 0 0 1 0 2.73l-.09.15a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.09-.15a2 2 0 0 1 0-2.73l.09-.15a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-800">Ajustes del Sistema</h2>
+                </div>
+                
+                <div class="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <!-- Settings Navigation -->
+                    <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 lg:col-span-1">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-4">Áreas de Configuración</h3>
+                        <ul class="space-y-2">
+                            <li><button class="w-full text-left p-2 rounded-lg hover:bg-gray-100 settings-nav-button active" data-settings-target="interfaceSettings">Interfaz</button></li>
+                            <li><button class="w-full text-left p-2 rounded-lg hover:bg-gray-100 settings-nav-button" data-settings-target="dashboardSettings">Dashboard</button></li>
+                            <li><button class="w-full text-left p-2 rounded-lg hover:bg-gray-100 settings-nav-button" data-settings-target="salesSettings">Ventas</button></li>
+                            <li><button class="w-full text-left p-2 rounded-lg hover:bg-gray-100 settings-nav-button" data-settings-target="inventorySettings">Inventario</button></li>
+                            <li><button class="w-full text-left p-2 rounded-lg hover:bg-gray-100 settings-nav-button" data-settings-target="financeSettings">Finanzas</button></li>
+                            <li><button class="w-full text-left p-2 rounded-lg hover:bg-gray-100 settings-nav-button" data-settings-target="movementsSettings">Movimientos</button></li>
+                        </ul>
+                    </div>
+
+                    <!-- Settings Content -->
+                    <div class="bg-white rounded-2xl shadow-lg p-4 sm:p-6 lg:col-span-2 flex flex-col overflow-y-auto">
+                        <div id="interfaceSettings" class="settings-content active space-y-6">
+                            <h3 class="text-xl font-bold text-gray-800 border-b pb-3 mb-4">Ajustes de Interfaz</h3>
+                            
+                            <!-- New: Punto de Venta Name -->
+                            <div>
+                                <label for="pdvNameInput" class="block text-sm font-medium text-gray-700 mb-2">Nombre del Punto de Venta:</label>
+                                <input type="text" id="pdvNameInput" placeholder="Ej: Mi Tienda Online" class="w-full p-2 border rounded-lg"/>
+                                <button id="savePdvNameButton" class="mt-4 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition">Guardar Nombre</button>
+                            </div>
+
+                            <div>
+                                <label for="colorPalette" class="block text-sm font-medium text-gray-700 mb-2">Paleta de Colores Principal:</label>
+                                <div class="flex flex-wrap gap-4">
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input type="radio" name="colorPalette" value="blue" class="form-radio h-5 w-5 text-blue-600" checked>
+                                        <span class="ml-2 text-gray-700">Azul (Default)</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input type="radio" name="colorPalette" value="purple" class="form-radio h-5 w-5 text-purple-600">
+                                        <span class="ml-2 text-gray-700">Púrpura</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input type="radio" name="colorPalette" value="emerald" class="form-radio h-5 w-5 text-emerald-600">
+                                        <span class="ml-2 text-gray-700">Esmeralda</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input type="radio" name="colorPalette" value="rose" class="form-radio h-5 w-5 text-rose-600">
+                                        <span class="ml-2 text-gray-700">Rosa</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="logoUpload" class="block text-sm font-medium text-gray-700 mb-2">Logo de la Empresa:</label>
+                                <input type="file" id="logoUploadFile" accept="image/*" class="w-full p-2 border rounded-lg mb-2"/>
+                                <input type="url" id="logoUploadURL" placeholder="O introduce una URL de imagen" class="w-full p-2 border rounded-lg"/>
+                                <button id="applyLogoButton" class="mt-4 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition">Aplicar Logo</button>
+                                <button id="removeLogoButton" class="mt-4 ml-2 bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition">Eliminar Logo</button>
+
+                                <div class="mt-4 text-center">
+                                    <p class="text-gray-500 text-sm mb-2">Previsualización del Logo:</p>
+                                    <img id="logoPreview" src="" alt="Previsualización del Logo" class="max-h-24 w-auto mx-auto border rounded-lg p-2 hidden">
+                                    <span id="logoNoPreview" class="text-gray-400 text-xs">No hay logo seleccionado.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="inventorySettings" class="settings-content hidden space-y-6">
+                            <h3 class="text-xl font-bold text-gray-800 border-b pb-3 mb-4">Ajustes de Inventario</h3>
+                            <div>
+                                <label for="lowStockThresholdInput" class="block text-sm font-medium text-gray-700">Umbral de Stock Bajo:</label>
+                                <input type="number" id="lowStockThresholdInput" class="w-full p-2 border rounded-lg mt-1" placeholder="Ej: 10"/>
+                                <p class="text-sm text-gray-500 mt-1">Número de unidades por debajo del cual un producto se considera "bajo stock".</p>
+                                <button id="saveLowStockThreshold" class="mt-4 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition">Guardar Umbral</button>
+                            </div>
+                        </div>
+
+                        <!-- Placeholder for other settings sections -->
+                        <div id="dashboardSettings" class="settings-content hidden">
+                            <h3 class="text-xl font-bold text-gray-800 border-b pb-3 mb-4">Ajustes de Dashboard</h3>
+                            <p class="text-gray-600">Opciones de configuración para el Dashboard (próximamente).</p>
+                        </div>
+                        <div id="salesSettings" class="settings-content hidden">
+                            <h3 class="text-xl font-bold text-gray-800 border-b pb-3 mb-4">Ajustes de Ventas</h3>
+                            <p class="text-gray-600">Opciones de configuración para Ventas (próximamente).</p>
+                        </div>
+                        <div id="financeSettings" class="settings-content hidden">
+                            <h3 class="text-xl font-bold text-gray-800 border-b pb-3 mb-4">Ajustes de Finanzas</h3>
+                            <p class="text-gray-600">Opciones de configuración para Finanzas (próximamente).</p>
+                        </div>
+                        <div id="movementsSettings" class="settings-content hidden">
+                            <h3 class="text-xl font-bold text-gray-800 border-b pb-3 mb-4">Ajustes de Movimientos</h3>
+                            <p class="text-gray-600">Opciones de configuración para Movimientos (próximamente).</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabContents = document.querySelectorAll('.tab-content');
+            const sidebar = document.getElementById('sidebar');
+            const menuButton = document.getElementById('menuButton');
+            const activeTabTitle = document.getElementById('activeTabTitle');
+            const mainContent = document.getElementById('mainContent');
+            const cashModal = document.getElementById('cashModal');
+            const startDayButton = document.getElementById('startDayButton');
+            const initialCashInput = document.getElementById('initialCashInput');
+            const lowStockButton = document.getElementById('lowStockButton');
+            const completeSaleButton = document.getElementById('completeSaleButton');
+            const paymentModal = document.getElementById('paymentModal');
+            const amountPaidInput = document.getElementById('amountPaidInput');
+            const changeDue = document.getElementById('changeDue');
+            const finalizeSaleButton = document.getElementById('finalizeSaleButton');
+            const saleSuccessModal = document.getElementById('saleSuccessModal');
+            const saleSuccessTotal = document.getElementById('saleSuccessTotal');
+            const saleSuccessChange = document.getElementById('saleSuccessChange');
+            const paymentMethodButtons = document.querySelectorAll('.payment-method-button');
+            const cashPaymentFields = document.getElementById('cashPaymentFields');
+            const changeDueDisplay = document.getElementById('changeDueDisplay');
+
+            const addProductButton = document.getElementById('addProductButton');
+            const saveProductButton = document.getElementById('saveProductButton');
+            const productIdInput = document.getElementById('productId');
+            const productSkuInput = document.getElementById('productSku');
+            const productNameInput = document.getElementById('productName');
+            const productCategoryInput = document.getElementById('productCategory');
+            const productPriceInput = document.getElementById('productPrice');
+            const productCostInput = document.getElementById('productCost');
+            const productStockInput = document.getElementById('productStock');
+            // Image upload elements
+            const imageSourceRadios = document.querySelectorAll('input[name="imageSource"]');
+            const productImageURLInput = document.getElementById('productImageURL');
+            const productImageFileInput = document.getElementById('productImageFile');
+            const productImagePreview = document.getElementById('productImagePreview');
+            const noImageText = document.getElementById('noImageText');
+
+            const inventoryTableBody = document.getElementById('inventoryTableBody');
+            const productsGrid = document.getElementById('productsGrid');
+            const cartItemsContainer = document.getElementById('cartItems');
+            const cartTotalSpan = document.getElementById('cartTotal');
+            const emptyCartMessage = document.getElementById('emptyCartMessage');
+            const inventorySearchInput = document.getElementById('inventorySearchInput');
+            const inventoryCategoryFilter = document.getElementById('inventoryCategoryFilter');
+            const inventoryStockFilter = document.getElementById('inventoryStockFilter');
+            const clearInventoryFiltersButton = document.getElementById('clearInventoryFilters');
+            const salesSearchInput = document.getElementById('salesSearchInput');
+            const movementsLogContainer = document.getElementById('movementsLog');
+            const lowStockCountElement = document.getElementById('lowStockCount');
+            const categoryButtonsContainer = document.getElementById('categoryButtonsContainer');
+            const salesHistoryContent = document.getElementById('salesHistoryContent');
+
+            const cashMovementType = document.getElementById('cashMovementType');
+            const cashMovementAmount = document.getElementById('cashMovementAmount');
+            const cashMovementDescription = document.getElementById('cashMovementDescription');
+            const saveCashMovementButton = document.getElementById('saveCashMovementButton');
+
+            // Finance tab elements
+            const initialCashDisplay = document.getElementById('initialCashDisplay');
+            const totalIncomeDisplay = document.getElementById('totalIncomeDisplay');
+            const profitDisplay = document.getElementById('profitDisplay');
+            const onlineMoneyDisplay = document.getElementById('onlineMoneyDisplay');
+            const cashInDrawerDisplay = document.getElementById('cashInDrawerDisplay');
+            const salesDetailTableBody = document.getElementById('salesDetailTableBody');
+            const cashMovementTableBody = document.getElementById('cashMovementTableBody');
+            const financeDateFrom = document.getElementById('financeDateFrom');
+            const financeDateTo = document.getElementById('financeDateTo');
+            const clearFinanceFilters = document.getElementById('clearFinanceFilters');
+
+            // Movements tab elements
+            const movementsDateFrom = document.getElementById('movementsDateFrom');
+            const movementsDateTo = document.getElementById('movementsDateTo');
+            const movementsTypeFilter = document.getElementById('movementsTypeFilter');
+            const clearMovementsFilters = document.getElementById('clearMovementsFilters');
+
+            // Dashboard filters
+            const dashboardDateFrom = document.getElementById('dashboardDateFrom');
+            const dashboardDateTo = document.getElementById('dashboardDateTo');
+            const dashboardSearchTerm = document.getElementById('dashboardSearchTerm');
+            const clearDashboardFilters = document.getElementById('clearDashboardFilters');
+
+            // Confirmation modal elements
+            const confirmationModal = document.getElementById('confirmationModal');
+            const confirmationModalTitle = document.getElementById('confirmationModalTitle');
+            const confirmationModalMessage = document.getElementById('confirmationModalMessage');
+            const confirmActionButton = document.getElementById('confirmActionButton');
+            let confirmActionCallback = null; // To store the function to call on confirmation
+
+            // Chart instances
+            let salesPerformanceChart;
+            let topProductsChart;
+
+            let products = [
+                { id: 'prod-001', sku: 'SKU-001', name: 'Café Americano', category: 'Bebidas', price: 25.00, cost: 10.00, stock: 100, image: 'https://placehold.co/100x100/cafecito/white?text=Cafe' },
+                { id: 'prod-002', sku: 'SKU-002', name: 'Latte', category: 'Bebidas', price: 35.00, cost: 15.00, stock: 80, image: 'https://placehold.co/100x100/latte/white?text=Latte' },
+                { id: 'prod-003', sku: 'SKU-003', name: 'Croissant', category: 'Panaderia', price: 20.00, cost: 8.00, stock: 35, image: 'https://placehold.co/100x100/croissant/white?text=Croissant' },
+                { id: 'prod-004', sku: 'SKU-004', name: 'Agua embotellada', category: 'Bebidas', price: 15.00, cost: 5.00, stock: 200, image: 'https://placehold.co/100x100/agua/white?text=Agua' },
+                { id: 'prod-005', sku: 'SKU-005', name: 'Pastel de Chocolate', category: 'Panaderia', price: 45.00, cost: 20.00, stock: 30, image: 'https://placehold.co/100x100/chocolate/white?text=Pastel' },
+                { id: 'prod-006', sku: 'SKU-006', name: 'Jugo de Naranja', category: 'Bebidas', price: 30.00, cost: 12.00, stock: 70, image: 'https://placehold.co/100x100/naranja/white?text=Jugo' },
+                { id: 'prod-007', sku: 'SKU-007', name: 'Refresco Cola', category: 'Bebidas', price: 28.00, cost: 10.00, stock: 150, image: 'https://placehold.co/100x100/cola/white?text=Cola' },
+                { id: 'prod-008', sku: 'SKU-008', name: 'Té Verde', category: 'Bebidas', price: 22.00, cost: 9.00, stock: 90, image: 'https://placehold.co/100x100/teverde/white?text=Te' },
+                { id: 'prod-009', sku: 'SKU-009', name: 'Sandwich Jamón', category: 'Comida', price: 55.00, cost: 25.00, stock: 40, image: 'https://placehold.co/100x100/sandwich/white?text=Sandwich' },
+                { id: 'prod-010', sku: 'SKU-010', name: 'Ensalada César', category: 'Comida', price: 65.00, cost: 30.00, stock: 25, image: 'https://placehold.co/100x100/ensalada/white?text=Ensalada' },
+                { id: 'prod-011', sku: 'SKU-011', name: 'Muffin Arándanos', category: 'Panaderia', price: 25.00, cost: 10.00, stock: 50, image: 'https://placehold.co/100x100/muffin/white?text=Muffin' },
+                { id: 'prod-012', sku: 'SKU-012', name: 'Dona Glaseada', category: 'Panaderia', price: 18.00, cost: 7.00, stock: 60, image: 'https://placehold.co/100x100/dona/white?text=Dona' },
+                { id: 'prod-013', sku: 'SKU-013', name: 'Pastel de Zanahoria', category: 'Panaderia', price: 48.00, cost: 22.00, stock: 20, image: 'https://placehold.co/100x100/zanahoria/white?text=Pastel' },
+                { id: 'prod-014', sku: 'SKU-014', name: 'Pizza Pepperoni', category: 'Comida', price: 120.00, cost: 50.00, stock: 15, image: 'https://placehold.co/100x100/pizza/white?text=Pizza' },
+                { id: 'prod-015', sku: 'SKU-015', name: 'Helado Vainilla', category: 'Postres', price: 30.00, cost: 10.00, stock: 80, image: 'https://placehold.co/100x100/helado/white?text=Helado' },
+                { id: 'prod-016', sku: 'SKU-016', name: 'Galletas Choco', category: 'Panaderia', price: 20.00, cost: 8.00, stock: 120, image: 'https://placehold.co/100x100/galletas/white?text=Galletas' },
+            ];
+
+            let cart = [];
+            let salesHistory = JSON.parse(localStorage.getItem('salesHistory')) || []; // Array to store sales history
+            let cashMovements = JSON.parse(localStorage.getItem('cashMovements')) || []; // Array to store cash movements
+            // Load lowStockThreshold from localStorage or use default
+            let lowStockThreshold = parseInt(localStorage.getItem('lowStockThreshold') || 30);
+            let selectedPaymentMethod = 'Efectivo'; // Default payment method
+            let currentCashInDrawer = 0; // Current cash in drawer
+            let initialDayCash = 0; // Stores the initial cash for the day
+            let pdvName = localStorage.getItem('pdvName') || 'PDV Pro'; // Load PDV name
+
+            // --- Elements for Settings Tab ---
+            const settingsNavButtons = document.querySelectorAll('.settings-nav-button');
+            const settingsContents = document.querySelectorAll('.settings-content');
+            const lowStockThresholdInput = document.getElementById('lowStockThresholdInput');
+            const saveLowStockThresholdButton = document.getElementById('saveLowStockThreshold');
+            const colorPaletteRadios = document.querySelectorAll('input[name="colorPalette"]');
+            const logoUploadFile = document.getElementById('logoUploadFile');
+            const logoUploadURL = document.getElementById('logoUploadURL');
+            const applyLogoButton = document.getElementById('applyLogoButton');
+            const removeLogoButton = document.getElementById('removeLogoButton');
+            const sidebarLogo = document.getElementById('sidebarLogo');
+            const sidebarIcon = document.getElementById('sidebarIcon');
+            const sidebarTitle = document.getElementById('sidebarTitle');
+            const logoPreview = document.getElementById('logoPreview');
+            const logoNoPreview = document.getElementById('logoNoPreview');
+            const pdvNameInput = document.getElementById('pdvNameInput'); // New element for PDV name
+            const savePdvNameButton = document.getElementById('savePdvNameButton'); // New button for PDV name
+
+            // Interface Settings: Color Palette
+            const colorPalettes = {
+                blue: {
+                    '--color-primary-500': 'rgb(59, 130, 246)',
+                    '--color-primary-600': 'rgb(37, 99, 235)',
+                    '--color-primary-100': 'rgb(219, 234, 254)',
+                    '--color-primary-text': 'rgb(29, 78, 216)'
+                },
+                purple: {
+                    '--color-primary-500': 'rgb(168, 85, 247)',
+                    '--color-primary-600': 'rgb(124, 58, 237)',
+                    '--color-primary-100': 'rgb(238, 233, 255)',
+                    '--color-primary-text': 'rgb(109, 40, 217)'
+                },
+                emerald: {
+                    '--color-primary-500': 'rgb(16, 185, 129)',
+                    '--color-primary-600': 'rgb(5, 150, 105)',
+                    '--color-primary-100': 'rgb(209, 250, 229)',
+                    '--color-primary-text': 'rgb(4, 120, 87)'
+                },
+                rose: {
+                    '--color-primary-500': 'rgb(244, 63, 94)',
+                    '--color-primary-600': 'rgb(225, 29, 72)',
+                    '--color-primary-100': 'rgb(255, 230, 235)',
+                    '--color-primary-text': 'rgb(190, 18, 60)'
+                }
+            };
+
+            // --- Cash Register Start Modal Logic ---
+            let initialCashSet = localStorage.getItem('initialCashSet') === 'true'; // State to control if initial cash has been set
+
+            // Initialize charts with empty data
+            initCharts();
+            // Apply saved settings
+            applySavedSettings();
+
+            // Handle the display of the initial cash modal
+            if (!initialCashSet) {
+                // If initial cash hasn't been set, show the modal and hide the main content
+                cashModal.style.display = 'flex'; // Ensure modal is visible
+                document.getElementById('content').classList.add('hidden'); // Hide main content
+            } else {
+                // If initial cash has already been set, hide the modal and show the main content
+                cashModal.style.display = 'none'; // If already set, hide modal
+                document.getElementById('content').classList.remove('hidden'); // Ensure content is visible
+                initialDayCash = parseFloat(localStorage.getItem('initialDayCash') || 0); // Load initial cash
+                // Recalculate currentCashInDrawer based on initialDayCash and all cash movements
+                currentCashInDrawer = initialDayCash;
+                cashMovements.forEach(movement => {
+                    // Only apply movements that are not the initial day cash itself
+                    if (movement.type !== 'Ingreso a Caja' || !movement.description.includes('Fondo inicial del día')) {
+                        currentCashInDrawer += movement.amount;
+                    }
+                });
+                updateFinancesData(); // Update finances on load if already set
+                updateDashboardData(); // Update dashboard on load
+            }
+
+            startDayButton.addEventListener('click', () => {
+                const initialAmount = parseFloat(initialCashInput.value);
+                if (!isNaN(initialAmount) && initialAmount >= 0) {
+                    initialCashSet = true;
+                    localStorage.setItem('initialCashSet', 'true'); // Save state
+                    localStorage.setItem('initialDayCash', initialAmount.toFixed(2)); // Store initial day cash
+                    initialDayCash = initialAmount; // Set initial cash for finance display
+                    currentCashInDrawer = initialAmount; // Set initial cash for operational drawer
+                    // Log the initial cash as an "Ingreso a Caja" movement
+                    logMovement('Ingreso a Caja', `Fondo inicial del día: $${initialAmount.toFixed(2)}`, initialAmount);
+                    cashModal.style.display = 'none';
+                    document.getElementById('content').classList.remove('hidden'); // Show main content
+                    updateFinancesData(); // Update finances immediately
+                    updateDashboardData(); // Update dashboard after setting initial cash
+                } else {
+                    showMessage('Por favor, ingresa un monto válido para comenzar el día.', 'red');
+                }
+            });
+
+
+            // --- Sidebar and Main Content Layout Adjustment ---
+            function adjustMainContentLayout() {
+                if (window.innerWidth < 1024) { // Mobile/Tablet
+                    // On mobile, sidebar is fixed, mainContent needs to be pushed if sidebar is open
+                    if (sidebar.classList.contains('open')) {
+                        mainContent.classList.add('main-content-shifted');
+                    } else {
+                        mainContent.classList.remove('main-content-shifted');
+                    }
+                    // On mobile, always show icon/title, hide logo
+                    sidebarLogo.classList.add('hidden');
+                    sidebarIcon.classList.remove('hidden');
+                    sidebarTitle.classList.remove('hidden');
+                } else { // Desktop (lg breakpoint and above)
+                    // On desktop, main content width is controlled by flex-1 and sidebar width.
+                    // No explicit margin-left needed on mainContent.
+                    // Ensure that mobile-specific class is removed if resizing from mobile to desktop.
+                    mainContent.classList.remove('main-content-shifted');
+
+                    // Adjust logo/icon visibility based on sidebar open state for desktop
+                    if (sidebar.classList.contains('open')) {
+                        sidebarLogo.classList.add('hidden');
+                        sidebarIcon.classList.remove('hidden');
+                        sidebarTitle.classList.remove('hidden');
+                    } else {
+                        sidebarLogo.classList.remove('hidden');
+                        sidebarIcon.classList.add('hidden');
+                        sidebarTitle.classList.add('hidden');
+                    }
+                }
+            }
+
+            // --- Tab Navigation Logic ---
+            function showTab(tabId, filterLowStock = false) {
+                // Remove 'active' from all buttons and content
+                tabButtons.forEach(btn => {
+                    btn.classList.remove('bg-primary-100', 'text-primary-600');
+                    btn.classList.add('text-gray-600', 'hover:bg-gray-100');
+                });
+                tabContents.forEach(content => {
+                    content.classList.remove('active');
+                });
+
+                // Add 'active' to selected button and content
+                const targetButton = document.querySelector(`.tab-button[data-tab="${tabId}"]`);
+                document.getElementById(tabId).classList.add('active');
+                if (targetButton) {
+                    activeTabTitle.textContent = targetButton.querySelector('span') ? targetButton.querySelector('span').textContent : targetButton.textContent;
+                    targetButton.classList.add('bg-primary-100', 'text-primary-600');
+                    targetButton.classList.remove('text-gray-600', 'hover:bg-gray-100');
+                } else {
+                    activeTabTitle.textContent = tabId.charAt(0).toUpperCase() + tabId.slice(1); // Fallback
+                }
+
+
+                // If navigating to inventory with low stock filter
+                if (tabId === 'inventario' && filterLowStock) {
+                    inventoryStockFilter.value = lowStockThreshold;
+                    applyInventoryFilters();
+                } else if (tabId === 'inventario') {
+                    applyInventoryFilters(); // Apply current filters when just switching to inventory
+                } else if (tabId === 'ventas') {
+                    renderCategoryButtons(); // Render category buttons when sales tab is active
+                    renderSalesProducts(); // Re-render products for sales tab
+                } else if (tabId === 'finanzas') {
+                    updateFinancesData(); // Update finance data when navigating to finance tab
+                } else if (tabId === 'movimientos') {
+                    renderMovementsLog(); // Update movements log when navigating to movements tab
+                } else if (tabId === 'dashboard') {
+                    updateDashboardData(); // Update dashboard data when navigating to dashboard tab
+                } else if (tabId === 'ajustes') {
+                    showSettingsSection('interfaceSettings'); // Default to interface settings when opening ajustes
+                    lowStockThresholdInput.value = lowStockThreshold; // Populate inventory setting
+                    pdvNameInput.value = pdvName; // Populate PDV name setting
+                }
+
+                // Close sidebar on mobile after selection
+                if (window.innerWidth < 1024) {
+                    sidebar.classList.remove('open');
+                    adjustMainContentLayout(); // Re-adjust main content layout based on sidebar state
+                }
+            }
+
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    showTab(button.dataset.tab);
+                });
+            });
+
+            // On page load, show default active tab (Dashboard) only if initial cash is set
+            if (initialCashSet) {
+                showTab('dashboard');
+                renderSalesProducts(); // Initial render of products in sales tab
+                renderInventoryTable(); // Initial render of inventory table
+                updateLowStockCount(); // Initial update of low stock count
+                renderCategoryButtons(); // Initial render of category buttons
+                renderMovementsLog(); // Initial render of movements log
+                updateFinancesData(); // Initial update of finances data
+            }
+
+
+            // --- Sidebar Open/Close Logic on Mobile and Desktop ---
+            menuButton.addEventListener('click', () => {
+                // This button is primarily for mobile, but on desktop it can toggle the full sidebar state
+                sidebar.classList.toggle('open');
+                adjustMainContentLayout(); // Re-adjust main content layout based on sidebar state
+            });
+
+            // Add hover functionality for desktop sidebar
+            sidebar.addEventListener('mouseenter', () => {
+                if (window.innerWidth >= 1024) { // Only for large screens
+                    sidebar.classList.add('open');
+                    adjustMainContentLayout(); // Adjust logo/icon visibility
+                }
+            });
+
+            sidebar.addEventListener('mouseleave', () => {
+                if (window.innerWidth >= 1024) { // Only for large screens
+                    sidebar.classList.remove('open');
+                    adjustMainContentLayout(); // Adjust logo/icon visibility
+                }
+            });
+
+            // Adjust layout on window resize
+            window.addEventListener('resize', () => {
+                adjustMainContentLayout();
+                // When resizing from mobile to desktop, collapse sidebar if it was open on mobile
+                if (window.innerWidth >= 1024) {
+                    sidebar.classList.remove('open'); // Ensure it collapses to 80px
+                    // No margin adjustment for mainContent here, as flexbox handles it
+                }
+            });
+
+            adjustMainContentLayout(); // Initial adjustment on load
+
+
+            // --- Generic Modal Logic (Open and Close) ---
+            document.querySelectorAll('[data-modal-target]').forEach(button => {
+                button.addEventListener('click', () => {
+                    const targetId = button.dataset.modalTarget;
+                    const modal = document.getElementById(targetId);
+                    if (modal) {
+                        modal.classList.add('active'); // Use active class for display flex
+                        if (targetId === 'historyModal') {
+                            renderSalesHistory(); // Render sales history when opening its modal
+                        }
+                    }
+                });
+            });
+
+            document.querySelectorAll('.close-modal').forEach(button => {
+                button.addEventListener('click', (event) => {
+                    const targetId = event.currentTarget.dataset.modalTarget;
+                    const modal = document.getElementById(targetId);
+                    if (modal) {
+                        modal.classList.remove('active'); // Remove active class to hide
+                    }
+                    // Prevent default behavior to avoid issues with parent elements
+                    event.preventDefault();
+                    event.stopPropagation();
+                });
+            });
+
+            // --- Dashboard Low Stock Button ---
+            lowStockButton.addEventListener('click', () => {
+                showTab('inventario', true); // Navigate to inventory and filter
+            });
+
+            // --- Sales Tab Logic ---
+            function renderSalesProducts(categoryFilter = 'all') {
+                productsGrid.innerHTML = ''; // Clear existing products
+                const salesSearchTerm = salesSearchInput.value.toLowerCase();
+
+                const filteredProducts = products.filter(product => {
+                    const matchesSearch = product.name.toLowerCase().includes(salesSearchTerm) ||
+                                          product.sku.toLowerCase().includes(salesSearchTerm);
+                    const matchesCategory = categoryFilter === 'all' || product.category === category;
+                    return matchesSearch && matchesCategory;
+                });
+
+                if (filteredProducts.length === 0) {
+                    productsGrid.innerHTML = '<p class="text-gray-500 text-center col-span-full mt-8">No se encontraron productos.</p>';
+                    return;
+                }
+
+                filteredProducts.forEach(product => {
+                    const productCard = document.createElement('div');
+                    productCard.className = 'bg-white rounded-lg shadow p-3 text-center cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col items-center';
+                    productCard.dataset.productId = product.id;
+                    productCard.innerHTML = `
+                        <img src="${product.image}" onerror="this.onerror=null;this.src='https://placehold.co/100x100?text=No+Image';" alt="${product.name}" class="w-24 h-24 object-cover rounded-md mb-2">
+                        <p class="font-bold text-gray-800 text-sm">${product.name}</p>
+                        <p class="text-primary-500 font-semibold mt-2">$${product.price.toFixed(2)}</p>
+                        <p class="text-xs text-gray-500 mt-1">Stock: ${product.stock}</p>
+                    `;
+                    productCard.addEventListener('click', () => addProductToCart(product));
+                    productsGrid.appendChild(productCard);
+                });
+            }
+
+            salesSearchInput.addEventListener('input', () => {
+                const activeCategoryButton = document.querySelector('.category-button.active');
+                const category = activeCategoryButton ? activeCategoryButton.dataset.category : 'all';
+                renderSalesProducts(category);
+            });
+
+            function getUniqueCategories() {
+                const categories = new Set();
+                products.forEach(product => categories.add(product.category));
+                return ['all', ...Array.from(categories)]; // 'all' for all categories
+            }
+
+            function renderCategoryButtons() {
+                categoryButtonsContainer.innerHTML = ''; // Clear existing buttons
+                const uniqueCategories = getUniqueCategories();
+
+                uniqueCategories.forEach(category => {
+                    const button = document.createElement('button');
+                    button.className = `category-button px-4 py-2 rounded-lg font-semibold transition ${category === 'all' ? 'bg-primary-500 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`;
+                    button.textContent = category === 'all' ? 'Todas' : category;
+                    button.dataset.category = category;
+                    button.addEventListener('click', () => {
+                        // Remove active class from all category buttons
+                        document.querySelectorAll('.category-button').forEach(btn => {
+                            btn.classList.remove('bg-primary-500', 'text-white');
+                            btn.classList.add('bg-gray-200', 'text-gray-800', 'hover:bg-gray-300');
+                        });
+                        // Add active class to the clicked button
+                        button.classList.add('bg-primary-500', 'text-white');
+                        button.classList.remove('bg-gray-200', 'text-gray-800', 'hover:bg-gray-300');
+                        renderSalesProducts(category); // Filter products by selected category
+                    });
+                    categoryButtonsContainer.appendChild(button);
+                });
+            }
+
+
+            function addProductToCart(product) {
+                const existingItem = cart.find(item => item.id === product.id);
+
+                if (existingItem) {
+                    if (existingItem.quantity < product.stock) {
+                        existingItem.quantity++;
+                    } else {
+                        showMessage(`No hay suficiente stock para ${product.name}`, 'yellow');
+                        return;
+                    }
+                } else {
+                    cart.push({ ...product, quantity: 1 });
+                }
+                renderCart();
+            }
+
+            function renderCart() {
+                cartItemsContainer.innerHTML = ''; // Clear current items
+                if (cart.length === 0) {
+                    emptyCartMessage.style.display = 'block';
+                    completeSaleButton.disabled = true;
+                    cartTotalSpan.textContent = '$0.00';
+                    return;
+                } else {
+                    emptyCartMessage.style.display = 'none';
+                    completeSaleButton.disabled = false;
+                }
+
+                let total = 0;
+                cart.forEach(item => {
+                    const cartItemDiv = document.createElement('div');
+                    // Changed from bounceIn to fadeInUp for a smoother appearance
+                    cartItemDiv.className = 'flex items-center justify-between p-3 border-b last:border-b-0 animate__animated animate__fadeInUp cart-item-added';
+                    cartItemDiv.dataset.id = item.id; // Store item ID on the element for removal animation
+
+                    cartItemDiv.innerHTML = `
+                        <div>
+                            <p class="font-semibold text-gray-800">${item.name}</p>
+                            <p class="text-sm text-gray-600">$${item.price.toFixed(2)} x ${item.quantity}</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button class="text-primary-500 hover:text-primary-600 font-bold" data-id="${item.id}" data-action="decrease">-</button>
+                            <span class="font-bold">${item.quantity}</span>
+                            <button class="text-primary-500 hover:text-primary-600 font-bold" data-id="${item.id}" data-action="increase">+</button>
+                            <button class="text-red-500 hover:text-red-700 ml-2" data-id="${item.id}" data-action="remove">
+                                <svg class="lucide lucide-trash-2" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                            </button>
+                        </div>
+                    `;
+                    cartItemsContainer.appendChild(cartItemDiv);
+                    total += item.price * item.quantity;
+                });
+                cartTotalSpan.textContent = `$${total.toFixed(2)}`;
+
+                // Add event listeners for quantity changes and removal
+                cartItemsContainer.querySelectorAll('button').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const id = e.currentTarget.dataset.id;
+                        const action = e.currentTarget.dataset.action;
+                        const itemIndex = cart.findIndex(item => item.id === id);
+                        const cartItemElement = e.currentTarget.closest('[data-id]'); // Get the parent div
+
+                        if (itemIndex > -1) {
+                            if (action === 'increase') {
+                                const productInStock = products.find(p => p.id === id);
+                                if (cart[itemIndex].quantity < productInStock.stock) {
+                                    cart[itemIndex].quantity++;
+                                } else {
+                                    showMessage(`No hay suficiente stock para ${cart[itemIndex].name}`, 'yellow');
+                                }
+                                renderCart(); // Re-render to update quantity display
+                            } else if (action === 'decrease') {
+                                if (cart[itemIndex].quantity > 1) {
+                                    cart[itemIndex].quantity--;
+                                    renderCart(); // Re-render to update quantity display
+                                } else {
+                                    // If quantity becomes 0, animate removal
+                                    cartItemElement.classList.add('animate__animated', 'animate__fadeOutRight', 'cart-item-removing');
+                                    cartItemElement.addEventListener('animationend', () => {
+                                        cart.splice(itemIndex, 1);
+                                        renderCart(); // Render after animation completes
+                                    }, { once: true });
+                                }
+                            } else if (action === 'remove') {
+                                // Animate removal
+                                cartItemElement.classList.add('animate__animated', 'animate__fadeOutRight', 'cart-item-removing');
+                                cartItemElement.addEventListener('animationend', () => {
+                                    cart.splice(itemIndex, 1);
+                                    renderCart(); // Render after animation completes
+                                }, { once: true });
+                            }
+                        }
+                    });
+                });
+            }
+
+            // --- Payment Processing Logic ---
+            paymentMethodButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Remove active class from all payment method buttons
+                    paymentMethodButtons.forEach(btn => {
+                        btn.classList.remove('bg-primary-500', 'text-white');
+                        btn.classList.add('bg-gray-200');
+                    });
+                    // Add active class to the clicked button
+                    button.classList.add('bg-primary-500', 'text-white');
+                    button.classList.remove('bg-gray-200');
+                    selectedPaymentMethod = button.dataset.method;
+
+                    // Show/hide amount paid input and change due based on payment method
+                    if (selectedPaymentMethod === 'Efectivo') {
+                        cashPaymentFields.style.display = 'block';
+                        changeDueDisplay.style.display = 'block';
+                        amountPaidInput.value = ''; // Clear previous input
+                        changeDue.textContent = '$0.00'; // Reset change
+                    } else {
+                        cashPaymentFields.style.display = 'none';
+                        changeDueDisplay.style.display = 'none';
+                        amountPaidInput.value = cartTotalSpan.textContent.replace('$', ''); // Auto-fill total for card/transfer
+                        changeDue.textContent = '$0.00'; // No change for non-cash payments
+                    }
+                });
+            });
+
+            completeSaleButton.addEventListener('click', () => {
+                const total = parseFloat(cartTotalSpan.textContent.replace('$', ''));
+                if (total > 0) {
+                    paymentModal.classList.add('active'); // Use active class
+                    // Ensure cash is initially selected and styled when opening modal
+                    document.getElementById('paymentMethodCash').click();
+                } else {
+                    showMessage('El carrito está vacío.', 'red');
+                }
+            });
+
+            amountPaidInput.addEventListener('input', () => {
+                const total = parseFloat(cartTotalSpan.textContent.replace('$', ''));
+                const amountPaid = parseFloat(amountPaidInput.value) || 0;
+                const change = amountPaid - total;
+                changeDue.textContent = `$${change.toFixed(2)}`;
+            });
+
+            finalizeSaleButton.addEventListener('click', () => {
+                const total = parseFloat(cartTotalSpan.textContent.replace('$', ''));
+                let amountPaid = parseFloat(amountPaidInput.value) || 0;
+                let change = 0;
+
+                if (selectedPaymentMethod === 'Efectivo') {
+                    if (amountPaid < total) {
+                        showMessage('El monto pagado es insuficiente para pago en efectivo.', 'red');
+                        return;
+                    }
+                    change = amountPaid - total;
+                } else {
+                    amountPaid = total; // For card/transfer, assume amount paid is exact total
+                    change = 0;
+                }
+                
+                // Process sale: update stock, clear cart, log movement
+                cart.forEach(cartItem => {
+                    const productIndex = products.findIndex(p => p.id === cartItem.id);
+                    if (productIndex > -1) {
+                        products[productIndex].stock -= cartItem.quantity;
+                    }
+                });
+
+                const saleDetails = {
+                    id: `sale-${Date.now()}`,
+                    timestamp: new Date(),
+                    items: JSON.parse(JSON.stringify(cart)), // Deep copy cart items
+                    total: total,
+                    method: selectedPaymentMethod,
+                    amountPaid: amountPaid,
+                    change: change
+                };
+                salesHistory.unshift(saleDetails); // Add to the beginning of the history
+                localStorage.setItem('salesHistory', JSON.stringify(salesHistory)); // Save sales history
+
+                // Update cash in drawer based on payment method
+                if (selectedPaymentMethod === 'Efectivo') {
+                    currentCashInDrawer += (total - change); // Add total - change (what was actually kept)
+                }
+                // For other methods, cash in drawer doesn't change directly.
+
+                logMovement('Venta Realizada', `Total: $${total.toFixed(2)}, Método: ${selectedPaymentMethod}, ${cart.length} productos.`, total, saleDetails.id);
+                renderInventoryTable(); // Update inventory display
+                renderSalesProducts(); // Update sales product display for new stock
+                updateLowStockCount(); // Update low stock count
+                updateDashboardData(); // Update dashboard after sale
+                updateFinancesData(); // Update finances data after sale
+
+                saleSuccessTotal.textContent = total.toFixed(2);
+                saleSuccessChange.textContent = change.toFixed(2);
+                saleSuccessModal.classList.add('active'); // Use active class
+
+                cart = []; // Clear the cart
+                renderCart(); // Re-render cart
+                paymentModal.classList.remove('active'); // Close payment modal
+            });
+
+            // --- Cash Management Modal Logic ---
+            saveCashMovementButton.addEventListener('click', () => {
+                const type = cashMovementType.value;
+                const amount = parseFloat(cashMovementAmount.value);
+                const description = cashMovementDescription.value;
+
+                if (isNaN(amount) || amount <= 0) {
+                    showMessage('Por favor, ingresa un monto válido para el movimiento.', 'red');
+                    return;
+                }
+                if (!description) {
+                    showMessage('Por favor, ingresa una descripción para el movimiento.', 'red');
+                    return;
+                }
+
+                let movementAmount = 0;
+                let movementTypeLogged = '';
+
+                if (type === 'ingreso') {
+                    currentCashInDrawer += amount;
+                    movementAmount = amount;
+                    movementTypeLogged = 'Ingreso a Caja';
+                } else if (type === 'retiro') {
+                    if (currentCashInDrawer < amount) {
+                        showMessage('No hay suficiente efectivo en caja para este retiro.', 'yellow');
+                        return;
+                    }
+                    currentCashInDrawer -= amount;
+                    movementAmount = -amount; // Negative for withdrawals
+                    movementTypeLogged = 'Retiro de Caja';
+                } else if (type === 'gasto') {
+                    if (currentCashInDrawer < amount) {
+                        showMessage('No hay suficiente efectivo en caja para cubrir este gasto.', 'yellow');
+                        return;
+                    }
+                    currentCashInDrawer -= amount;
+                    movementAmount = -amount; // Negative for expenses
+                    movementTypeLogged = 'Gasto Registrado';
+                }
+
+                logMovement(movementTypeLogged, `Monto: $${amount.toFixed(2)}, Descripción: ${description}.`, movementAmount);
+                showMessage('Movimiento de caja registrado.', 'green');
+                document.getElementById('cashMgmtModal').classList.remove('active'); // Use active class
+                cashMovementAmount.value = '';
+                cashMovementDescription.value = '';
+                updateFinancesData(); // Update finances after cash movement
+                updateDashboardData(); // Update dashboard after cash movement
+            });
+
+            // --- Sales History Logic ---
+            function renderSalesHistory() {
+                salesHistoryContent.innerHTML = ''; // Clear existing content
+
+                if (salesHistory.length === 0) {
+                    salesHistoryContent.innerHTML = '<p class="text-gray-500 text-center">No hay ventas registradas.</p>';
+                    return;
+                }
+
+                salesHistory.forEach(sale => {
+                    const saleDiv = document.createElement('div');
+                    saleDiv.className = 'bg-gray-50 rounded-lg p-4 shadow-sm border border-gray-200';
+                    const dateTime = sale.timestamp instanceof Date ? sale.timestamp.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : new Date(sale.timestamp).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    
+                    let itemsList = '';
+                    sale.items.forEach(item => {
+                        itemsList += `<li class="text-sm text-gray-700">${item.name} x ${item.quantity} ($${item.price.toFixed(2)} c/u)</li>`;
+                    });
+
+                    saleDiv.innerHTML = `
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 class="font-bold text-gray-800">Venta #${sale.id.slice(-5)}</h4>
+                            <span class="text-xs text-gray-500">${dateTime}</span>
+                        </div>
+                        <p class="text-md text-gray-700">Total: <span class="font-semibold">$${sale.total.toFixed(2)}</span></p>
+                        <p class="text-md text-gray-700">Método: <span class="font-semibold">${sale.method}</span></p>
+                        ${sale.method === 'Efectivo' ? `<p class="text-md text-gray-700">Pagado: <span class="font-semibold">$${sale.amountPaid.toFixed(2)}</span>, Cambio: <span class="font-semibold">$${sale.change.toFixed(2)}</span></p>` : ''}
+                        <p class="text-sm text-gray-600 mt-2 font-semibold">Productos:</p>
+                        <ul class="list-disc list-inside text-sm pl-2">
+                            ${itemsList}
+                        </ul>
+                        <div class="flex justify-end mt-4">
+                            <button class="text-red-500 hover:text-red-700 delete-sale-button" data-id="${sale.id}">
+                                <svg class="lucide lucide-trash-2" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                                Eliminar Venta
+                            </button>
+                        </div>
+                    `;
+                    salesHistoryContent.appendChild(saleDiv);
+                });
+
+                salesHistoryContent.querySelectorAll('.delete-sale-button').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const saleId = e.currentTarget.dataset.id;
+                        showConfirmation('Eliminar Venta', `¿Estás seguro de que quieres eliminar la venta #${saleId.slice(-5)}? Esta acción no se puede deshacer.`, () => deleteSale(saleId));
+                    });
+                });
+            }
+
+            function deleteSale(saleId) {
+                const saleIndex = salesHistory.findIndex(sale => sale.id === saleId);
+                if (saleIndex > -1) {
+                    const deletedSale = salesHistory.splice(saleIndex, 1)[0];
+                    localStorage.setItem('salesHistory', JSON.stringify(salesHistory)); // Save updated history
+
+                    // Revert stock for products in the deleted sale
+                    deletedSale.items.forEach(item => {
+                        const product = products.find(p => p.id === item.id);
+                        if (product) {
+                            product.stock += item.quantity;
+                        }
+                    });
+
+                    // Adjust cash in drawer if the sale was cash
+                    if (deletedSale.method === 'Efectivo') {
+                        currentCashInDrawer -= (deletedSale.total - deletedSale.change);
+                    }
+
+                    // Log the annulment of the sale
+                    logMovement('Venta Anulada', `Venta #${deletedSale.id.slice(-5)} anulada. Total: $${deletedSale.total.toFixed(2)}, Método: ${deletedSale.method}.`, -deletedSale.total);
+
+                    showMessage('Venta eliminada exitosamente.', 'green');
+                    renderSalesHistory();
+                    renderInventoryTable();
+                    renderSalesProducts();
+                    updateLowStockCount();
+                    updateDashboardData();
+                    updateFinancesData();
+                } else {
+                    showMessage('Error: Venta no encontrada.', 'red');
+                }
+            }
+
+
+            // --- Inventory Tab Logic ---
+            function renderInventoryTable(filteredProducts = products) {
+                inventoryTableBody.innerHTML = ''; // Clear existing rows
+
+                if (filteredProducts.length === 0) {
+                    const noResultsRow = document.createElement('tr');
+                    noResultsRow.innerHTML = `
+                        <td colspan="7" class="px-6 py-4 whitespace-nowrap text-center text-gray-500">No se encontraron productos con los filtros aplicados.</td>
+                    `;
+                    inventoryTableBody.appendChild(noResultsRow);
+                    return;
+                }
+
+                // Sort products by ID in descending order to show newest at top
+                // Ensure to parse timestamps correctly for proper sorting
+                const sortedProducts = [...filteredProducts].sort((a, b) => {
+                    const timestampA = parseInt(a.id.split('-')[1]);
+                    const timestampB = parseInt(b.id.split('-')[1]);
+                    return timestampB - timestampA;
+                });
+
+
+                sortedProducts.forEach(product => {
+                    const row = document.createElement('tr');
+                    const stockClass = product.stock <= lowStockThreshold ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800';
+                    row.dataset.id = product.id; // Add data-id for selection for removal animation
+                    row.innerHTML = `
+                        <td class="p-4"><input type="checkbox" class="h-5 w-5 rounded"/></td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <img src="${product.image}" onerror="this.onerror=null;this.src='https://placehold.co/50x50?text=No+Image';" alt="${product.name}" class="w-12 h-12 object-cover rounded-md">
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="font-medium text-gray-900">${product.name}</div>
+                            <div class="text-sm text-gray-500">${product.sku}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-gray-600">$${product.price.toFixed(2)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-gray-600">$${product.cost.toFixed(2)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${stockClass}">${product.stock}</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button class="text-primary-600 hover:text-primary-text mr-4 edit-product-button" data-id="${product.id}">
+                                <svg class="lucide lucide-edit" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                            <button class="text-red-600 hover:text-red-900 delete-product-button" data-id="${product.id}">
+                                <svg class="lucide lucide-trash-2" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                            </button>
+                        </td>
+                    `;
+                    inventoryTableBody.appendChild(row);
+                });
+
+                // Add event listeners for edit and delete buttons after rendering
+                inventoryTableBody.querySelectorAll('.edit-product-button').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const productId = e.currentTarget.dataset.id;
+                        editProduct(productId);
+                    });
+                });
+
+                inventoryTableBody.querySelectorAll('.delete-product-button').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const productId = e.currentTarget.dataset.id;
+                        showConfirmation('Eliminar Producto', `¿Estás seguro de que quieres eliminar este producto? Esta acción no se puede deshacer.`, () => deleteProduct(productId));
+                    });
+                });
+            }
+
+            function applyInventoryFilters() {
+                const searchTerm = inventorySearchInput.value.toLowerCase();
+                const category = inventoryCategoryFilter.value;
+                const maxStock = parseFloat(inventoryStockFilter.value);
+
+                // Sort products by ID in descending order to show newest at top
+                const sortedProducts = [...products].sort((a, b) => {
+                    // Assuming IDs are 'prod-TIMESTAMP', sort by timestamp
+                    const timestampA = parseInt(a.id.split('-')[1]);
+                    const timestampB = parseInt(b.id.split('-')[1]);
+                    return timestampB - timestampA;
+                });
+
+                const filtered = sortedProducts.filter(product => {
+                    const matchesSearch = product.name.toLowerCase().includes(searchTerm) ||
+                                          product.sku.toLowerCase().includes(searchTerm);
+                    const matchesCategory = category === 'all' || product.category === category;
+                    const matchesStock = isNaN(maxStock) || product.stock <= maxStock;
+                    return matchesSearch && matchesCategory && matchesStock;
+                });
+                renderInventoryTable(filtered);
+                updateLowStockCount(); // Update low stock count when filters applied
+            }
+
+            // Populate inventory category filter dynamically
+            function populateInventoryCategoryFilter() {
+                const uniqueCategories = getUniqueCategories();
+                inventoryCategoryFilter.innerHTML = '<option value="all">Todas las Categorías</option>';
+                uniqueCategories.filter(cat => cat !== 'all').forEach(category => {
+                    const option = document.createElement('option');
+                    option.value = category;
+                    option.textContent = category;
+                    inventoryCategoryFilter.appendChild(option);
+                });
+            }
+
+            inventorySearchInput.addEventListener('input', applyInventoryFilters);
+            inventoryCategoryFilter.addEventListener('change', applyInventoryFilters);
+            inventoryStockFilter.addEventListener('input', applyInventoryFilters);
+            clearInventoryFiltersButton.addEventListener('click', () => {
+                inventorySearchInput.value = '';
+                inventoryCategoryFilter.value = 'all';
+                inventoryStockFilter.value = '';
+                applyInventoryFilters();
+            });
+
+            // --- Product Modal (Add/Edit) Logic ---
+            addProductButton.addEventListener('click', () => {
+                // Clear form for new product
+                productIdInput.value = '';
+                productSkuInput.value = '';
+                productNameInput.value = '';
+                productCategoryInput.value = '';
+                productPriceInput.value = '';
+                productCostInput.value = '';
+                productStockInput.value = '';
+                
+                // Reset image inputs and preview
+                imageSourceRadios[0].checked = true; // Select URL by default
+                productImageURLInput.value = '';
+                productImageURLInput.classList.remove('hidden');
+                productImageFileInput.value = ''; // Clear file input
+                productImageFileInput.classList.add('hidden');
+                productImagePreview.src = '';
+                productImagePreview.classList.add('hidden');
+                noImageText.classList.remove('hidden');
+
+                document.getElementById('productModal').classList.add('active'); // Use active class
+            });
+
+            // Handle image source radio button change
+            imageSourceRadios.forEach(radio => {
+                radio.addEventListener('change', () => {
+                    if (radio.value === 'url') {
+                        productImageURLInput.classList.remove('hidden');
+                        productImageFileInput.classList.add('hidden');
+                    } else {
+                        productImageURLInput.classList.add('hidden');
+                        productImageFileInput.classList.remove('hidden');
+                    }
+                    // Clear previous image when switching source
+                    productImagePreview.src = '';
+                    productImagePreview.classList.add('hidden');
+                    noImageText.classList.remove('hidden');
+                });
+            });
+
+            // Handle image file selection for preview
+            productImageFileInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        productImagePreview.src = e.target.result;
+                        productImagePreview.classList.remove('hidden');
+                        noImageText.classList.add('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    productImagePreview.src = '';
+                    productImagePreview.classList.add('hidden');
+                    noImageText.classList.remove('hidden');
+                }
+            });
+
+            // Handle image URL input for preview
+            productImageURLInput.addEventListener('input', () => {
+                const url = productImageURLInput.value.trim();
+                if (url) {
+                    productImagePreview.src = url;
+                    productImagePreview.classList.remove('hidden');
+                    noImageText.classList.add('hidden');
+                } else {
+                    productImagePreview.src = '';
+                    productImagePreview.classList.add('hidden');
+                    noImageText.classList.remove('hidden');
+                }
+            });
+
+
+            saveProductButton.addEventListener('click', () => {
+                const id = productIdInput.value;
+                const sku = productSkuInput.value;
+                const name = productNameInput.value;
+                const category = productCategoryInput.value;
+                const price = parseFloat(productPriceInput.value);
+                const cost = parseFloat(productCostInput.value);
+                const stock = parseInt(productStockInput.value);
+                
+                // Determine image source
+                let image = 'https://placehold.co/100x100?text=No+Image'; // Default image
+                if (imageSourceRadios[0].checked) { // URL selected
+                    image = productImageURLInput.value.trim() || image;
+                } else { // File selected
+                    image = productImagePreview.src || image; // Use the Data URL from preview
+                }
+
+                if (!name || !category || isNaN(price) || isNaN(cost) || isNaN(stock)) {
+                    showMessage('Por favor, completa todos los campos obligatorios.', 'red');
+                    return;
+                }
+
+                if (id) {
+                    // Edit existing product
+                    const index = products.findIndex(p => p.id === id);
+                    if (index > -1) {
+                        const oldProduct = { ...products[index] }; // Copy old product for comparison
+                        products[index] = { ...products[index], sku, name, category, price, cost, stock, image };
+                        
+                        let changes = [];
+                        if (oldProduct.sku !== sku) changes.push(`SKU de '${oldProduct.sku}' a '${sku}'`);
+                        if (oldProduct.name !== name) changes.push(`Nombre de '${oldProduct.name}' a '${name}'`);
+                        if (oldProduct.category !== category) changes.push(`Categoría de '${oldProduct.category}' a '${category}'`);
+                        if (oldProduct.price !== price) changes.push(`Precio de $${oldProduct.price.toFixed(2)} a $${price.toFixed(2)}`);
+                        if (oldProduct.cost !== cost) changes.push(`Costo de $${oldProduct.cost.toFixed(2)} a $${cost.toFixed(2)}`);
+                        if (oldProduct.stock !== stock) changes.push(`Stock de ${oldProduct.stock} a ${stock}`);
+                        if (oldProduct.image !== image) changes.push(`Imagen actualizada`);
+
+                        logMovement('Producto Editado', `Producto: ${name}. Cambios: ${changes.join(', ') || 'ninguno'}.`);
+                    }
+                } else {
+                    // Add new product - push to the start of the array and add animation
+                    const newId = `prod-${Date.now()}`; // Simple unique ID
+                    const newProduct = { id: newId, sku, name, category, price, cost, stock, image };
+                    products.unshift(newProduct); // Add to the beginning of the array
+
+                    logMovement('Producto Añadido', `Producto: ${name}, Cantidad inicial: ${stock}.`, 0); // No cash impact for product add
+                }
+                document.getElementById('productModal').classList.remove('active'); // Use active class
+                
+                // Re-render the inventory table with filters applied, triggering the animation for the new item
+                applyInventoryFilters(); // This will re-render and apply the animation for the new item
+                renderSalesProducts(); // Update products in sales
+                updateLowStockCount(); // Update low stock count
+                populateInventoryCategoryFilter(); // Update category filter in inventory
+                renderCategoryButtons(); // Update category buttons in sales
+                showMessage('Producto guardado exitosamente.', 'green');
+                updateFinancesData(); // Update finances data after product changes
+                updateDashboardData(); // Update dashboard data after product changes
+            });
+
+            function editProduct(productId) {
+                const product = products.find(p => p.id === productId);
+                if (product) {
+                    productIdInput.value = product.id;
+                    productSkuInput.value = product.sku;
+                    productNameInput.value = product.name;
+                    productCategoryInput.value = product.category;
+                    productPriceInput.value = product.price;
+                    productCostInput.value = product.cost;
+                    productStockInput.value = product.stock;
+                    
+                    // Set image source and preview for editing
+                    if (product.image && (product.image.startsWith('http') || product.image.startsWith('data:image'))) {
+                        productImageURLInput.value = product.image;
+                        productImagePreview.src = product.image;
+                        productImagePreview.classList.remove('hidden');
+                        noImageText.classList.add('hidden');
+                        imageSourceRadios[0].checked = true; // Select URL option
+                        productImageURLInput.classList.remove('hidden');
+                        productImageFileInput.classList.add('hidden');
+                    } else { // No image or invalid image, revert to default
+                        productImageURLInput.value = '';
+                        productImagePreview.src = '';
+                        productImagePreview.classList.add('hidden'); // Ensure hidden
+                        noImageText.classList.remove('hidden');
+                        imageSourceRadios[0].checked = true; // Default to URL for new input
+                        productImageURLInput.classList.remove('hidden');
+                        productImageFileInput.classList.add('hidden');
+                    }
+                    productImageFileInput.value = ''; // Clear file input on edit
+
+                    document.getElementById('productModal').classList.add('active'); // Use active class
+                } else {
+                    showMessage('Error: Producto no encontrado para editar.', 'red');
+                }
+            }
+
+            function deleteProduct(productId) {
+                const productToDelete = products.find(p => p.id === productId);
+                if (!productToDelete) {
+                    showMessage('Producto no encontrado para eliminar.', 'red');
+                    return;
+                }
+
+                const rowToDelete = inventoryTableBody.querySelector(`tr[data-id="${productId}"]`);
+                if (rowToDelete) {
+                    // Add animation classes for removal
+                    rowToDelete.classList.add('animate__animated', 'animate__fadeOutUp', 'inventory-item-removing');
+                    rowToDelete.addEventListener('animationend', () => {
+                        // Remove the product from the array after the animation
+                        products = products.filter(p => p.id !== productId);
+                        logMovement('Producto Eliminado', `Producto: ${productToDelete.name}, ID: ${productId}.`, 0); // No cash impact for product delete
+                        renderInventoryTable(); // Re-render the table after removal
+                        renderSalesProducts(); // Update products in sales
+                        updateLowStockCount(); // Update low stock count
+                        populateInventoryCategoryFilter(); // Update category filter in inventory
+                        renderCategoryButtons(); // Update category buttons in sales
+                        showMessage('Producto eliminado.', 'green');
+                        updateFinancesData();
+                        updateDashboardData();
+                    }, { once: true }); // Ensure event listener is removed after first use
+                } else {
+                    // Fallback if the row element is not found, remove directly
+                    products = products.filter(p => p.id !== productId);
+                    logMovement('Producto Eliminado', `Producto: ${productToDelete.name}, ID: ${productId}.`, 0);
+                    renderInventoryTable();
+                    renderSalesProducts();
+                    updateLowStockCount();
+                    populateInventoryCategoryFilter();
+                    renderCategoryButtons();
+                    showMessage('Producto eliminado.', 'green');
+                    updateFinancesData();
+                    updateDashboardData();
+                }
+            }
+
+
+            // --- Movement Log Logic ---
+            // Added amount parameter to logMovement for financial tracking
+            function logMovement(type, description, amount = 0, saleId = null) { 
+                const now = new Date();
+                const movement = {
+                    id: `mov-${Date.now()}`,
+                    timestamp: now.toISOString(), // Store as ISO string for easier JSON serialization
+                    type: type,
+                    description: description,
+                    amount: amount, // Store the amount for financial calculations
+                    saleId: saleId // Link to sale if applicable
+                };
+                cashMovements.unshift(movement); // Add to the beginning of movements
+                localStorage.setItem('cashMovements', JSON.stringify(cashMovements)); // Save cash movements
+
+                renderMovementsLog(); // Update the movements log display
+            }
+
+            function renderMovementsLog(filteredMovements = cashMovements) {
+                movementsLogContainer.innerHTML = ''; // Clear existing content
+
+                if (filteredMovements.length === 0) {
+                    movementsLogContainer.innerHTML = '<p class="text-gray-500 text-center">No hay movimientos registrados.</p>';
+                    return;
+                }
+
+                filteredMovements.forEach(movement => {
+                    const movementDiv = document.createElement('div');
+                    movementDiv.className = 'flex items-start gap-4 p-3 border-b last:border-b-0';
+
+                    let iconSvg = '';
+                    let iconColorClass = '';
+                    if (movement.type === 'Venta Realizada') {
+                        iconSvg = `<svg class="lucide lucide-trending-up" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`;
+                        iconColorClass = 'text-green-500';
+                    } else if (movement.type === 'Ingreso a Caja' || movement.type === 'Producto Añadido') {
+                        iconSvg = `<svg class="lucide lucide-arrow-up-from-line" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3"/><path d="m6 9 6-6 6 6"/></svg>`;
+                        iconColorClass = 'text-primary-500';
+                    } else if (movement.type === 'Gasto Registrado' || movement.type === 'Retiro de Caja' || movement.type === 'Producto Eliminado' || movement.type === 'Venta Anulada') {
+                        iconSvg = `<svg class="lucide lucide-arrow-down-to-line" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>`;
+                        iconColorClass = 'text-red-500';
+                    } else if (movement.type === 'Producto Editado') {
+                        iconSvg = `<svg class="lucide lucide-edit" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+                        iconColorClass = 'text-yellow-500';
+                    }
+
+                    movementDiv.innerHTML = `
+                        <div class="mt-1 ${iconColorClass}">${iconSvg}</div>
+                        <div>
+                            <p class="font-semibold">${movement.type}</p>
+                            <p class="text-sm text-gray-600">${movement.description}</p>
+                            <p class="text-xs text-gray-400 mt-1">${new Date(movement.timestamp).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                    `;
+                    movementsLogContainer.appendChild(movementDiv);
+                });
+            }
+
+            // Filters for Movements Log
+            function applyMovementsFilters() {
+                const fromDate = movementsDateFrom.value ? new Date(movementsDateFrom.value) : null;
+                const toDate = movementsDateTo.value ? new Date(movementsDateTo.value) : null;
+                const typeFilter = movementsTypeFilter.value;
+
+                const filtered = cashMovements.filter(movement => {
+                    const movementDate = new Date(movement.timestamp);
+                    const matchesDate = (!fromDate || movementDate >= fromDate) &&
+                                        (!toDate || movementDate <= toDate);
+                    const matchesType = typeFilter === 'all' || movement.type === typeFilter;
+                    return matchesDate && matchesType;
+                });
+                renderMovementsLog(filtered);
+            }
+
+            movementsDateFrom.addEventListener('change', applyMovementsFilters);
+            movementsDateTo.addEventListener('change', applyMovementsFilters);
+            movementsTypeFilter.addEventListener('change', applyMovementsFilters);
+            clearMovementsFilters.addEventListener('click', () => {
+                movementsDateFrom.value = '';
+                movementsDateTo.value = '';
+                movementsTypeFilter.value = 'all';
+                applyMovementsFilters();
+            });
+
+
+            // --- General Message Display (replaces alert) ---
+            function showMessage(message, type = 'blue') {
+                // A simple way to show a message, could be a more complex modal
+                const messageBox = document.createElement('div');
+                messageBox.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white ${type === 'red' ? 'bg-red-500' : type === 'green' ? 'bg-green-500' : type === 'yellow' ? 'bg-yellow-500' : 'bg-primary-500'} z-[100]`; // Increased z-index
+                messageBox.textContent = message;
+                document.body.appendChild(messageBox);
+                setTimeout(() => {
+                    messageBox.remove();
+                }, 3000);
+            }
+
+            // --- Confirmation Modal ---
+            function showConfirmation(title, message, callback) {
+                confirmationModalTitle.textContent = title;
+                confirmationModalMessage.textContent = message;
+                confirmActionCallback = callback; // Store the callback
+                // Ensure the modal is visible regardless of current tab or other modal state
+                confirmationModal.classList.add('active'); // Use active class
+            }
+
+            confirmActionButton.addEventListener('click', () => {
+                if (confirmActionCallback) {
+                    confirmActionCallback(); // Execute the stored callback
+                }
+                confirmationModal.classList.remove('active'); // Use active class
+                confirmActionCallback = null; // Clear the callback
+            });
+
+
+            // --- Dashboard Data Update ---
+            function updateDashboardData() {
+                const fromDate = dashboardDateFrom.value ? new Date(dashboardDateFrom.value) : null;
+                const toDate = dashboardDateTo.value ? new Date(dashboardDateTo.value) : null;
+                const searchTerm = dashboardSearchTerm.value.toLowerCase();
+
+                const filteredSales = salesHistory.filter(sale => {
+                    const saleDate = new Date(sale.timestamp);
+                    const matchesDate = (!fromDate || saleDate >= fromDate) && (!toDate || saleDate <= toDate);
+                    
+                    const matchesSearch = sale.items.some(item => 
+                        item.name.toLowerCase().includes(searchTerm) || 
+                        item.category.toLowerCase().includes(searchTerm)
+                    );
+                    return matchesDate && matchesSearch;
+                });
+
+                let totalSales = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+                let totalTransactions = filteredSales.length;
+                let currentLowStockCount = 0; // Corrected variable name
+                products.forEach(p => {
+                    if (p.stock <= lowStockThreshold) {
+                        currentLowStockCount++; // Increment the local counter
+                    }
+                });
+                // Updated the low stock count display with the correct local variable
+                lowStockCountElement.textContent = currentLowStockCount; 
+
+                document.getElementById('totalSalesDashboard').textContent = totalSales.toFixed(2);
+                document.getElementById('totalTransactionsDashboard').textContent = totalTransactions;
+                // No need for a duplicate update of lowStockCountElement.textContent here
+                document.getElementById('averageTicketDashboard').textContent = (totalTransactions > 0 ? (totalSales / totalTransactions) : 0).toFixed(2);
+
+                updateSalesPerformanceChart(filteredSales);
+                updateTopProductsChart(filteredSales);
+            }
+
+            function updateLowStockCount() {
+                let count = 0;
+                products.forEach(p => {
+                    if (p.stock <= lowStockThreshold) {
+                        count++;
+                    }
+                });
+                lowStockCountElement.textContent = count; // Corrected to use 'count'
+            }
+
+            dashboardDateFrom.addEventListener('change', updateDashboardData);
+            dashboardDateTo.addEventListener('change', updateDashboardData);
+            dashboardSearchTerm.addEventListener('input', updateDashboardData);
+            clearDashboardFilters.addEventListener('click', () => {
+                dashboardDateFrom.value = '';
+                dashboardDateTo.value = '';
+                dashboardSearchTerm.value = '';
+                updateDashboardData();
+            });
+
+
+            // --- Finances Tab Data Update ---
+            function updateFinancesData() {
+                const fromDate = financeDateFrom.value ? new Date(financeDateFrom.value) : null;
+                const toDate = financeDateTo.value ? new Date(financeDateTo.value) : null;
+
+                let currentFilteredInitialCash = 0;
+                let totalSales = 0;
+                let totalCostOfGoodsSold = 0; // Cost of goods sold
+                let totalOnlineMoney = 0;
+                let totalCashIncomeFromSales = 0; // Cash received from sales
+                let totalCashExpenses = 0;
+                let totalCashRetreats = 0;
+                let totalCashIngresos = 0; // Includes initialDayCash and other income
+
+                // For "Caja Inicial (Día)", we use the global initialDayCash.
+                currentFilteredInitialCash = initialDayCash;
+                
+                // Filter sales and movements by date range for calculations and display
+                const filteredSales = salesHistory.filter(sale => {
+                    // Ensure sale.timestamp is treated as a Date object for comparison
+                    const saleDate = new Date(sale.timestamp);
+                    return (!fromDate || saleDate >= fromDate) && (!toDate || saleDate <= toDate);
+                });
+
+                const filteredCashMovements = cashMovements.filter(movement => {
+                    // Ensure movement.timestamp is treated as a Date object for comparison
+                    const movementDate = new Date(movement.timestamp);
+                    return (!fromDate || movementDate >= fromDate) && (!toDate || movementDate <= toDate);
+                });
+
+                filteredSales.forEach(sale => {
+                    totalSales += sale.total;
+                    if (sale.method !== 'Efectivo') {
+                        totalOnlineMoney += sale.total;
+                    } else {
+                        totalCashIncomeFromSales += (sale.total - sale.change); // Cash portion of the sale
+                    }
+                    sale.items.forEach(item => {
+                        const product = products.find(p => p.id === item.id);
+                        if (product) {
+                            totalCostOfGoodsSold += product.cost * item.quantity;
+                        }
+                    });
+                });
+
+                // Calculate totals from filtered cash movements
+                filteredCashMovements.forEach(movement => {
+                    if (movement.type === 'Retiro de Caja') {
+                        totalCashRetreats += Math.abs(movement.amount);
+                    } else if (movement.type === 'Gasto Registrado') {
+                        totalCashExpenses += Math.abs(movement.amount);
+                    } else if (movement.type === 'Ingreso a Caja') {
+                        // Exclude the 'Initial day fund' if we are already counting it with initialDayCash
+                        if (!movement.description.includes('Fondo inicial del día')) {
+                             totalCashIngresos += movement.amount;
+                        }
+                    }
+                });
+
+                // Combine cash income from sales and other cash inputs (excluding initial day cash to avoid double counting)
+                totalCashIngresos += totalCashIncomeFromSales;
+
+                // Calculate total income for the period (sales + other cash income)
+                const totalIncome = totalSales; // Total sales is often considered total income
+
+                // Calculate profit based on total sales and cost of goods sold
+                const profit = totalSales - totalCostOfGoodsSold;
+                
+                initialCashDisplay.textContent = currentFilteredInitialCash.toFixed(2);
+                totalIncomeDisplay.textContent = totalIncome.toFixed(2);
+                profitDisplay.textContent = profit.toFixed(2);
+                onlineMoneyDisplay.textContent = totalOnlineMoney.toFixed(2);
+                cashInDrawerDisplay.textContent = currentCashInDrawer.toFixed(2); // This remains the actual current cash in drawer
+
+                // Render Sales Detail Table
+                salesDetailTableBody.innerHTML = '';
+                if (filteredSales.length === 0) {
+                    salesDetailTableBody.innerHTML = `<tr id="noSalesDetailMessage"><td colspan="4" class="px-6 py-4 whitespace-nowrap text-center text-gray-500">No hay ventas en el período seleccionado.</td></tr>`;
+                } else {
+                    filteredSales.forEach(sale => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${sale.id.slice(-5)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(sale.timestamp).toLocaleDateString('es-ES')}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${sale.total.toFixed(2)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${sale.method}</td>
+                        `;
+                        salesDetailTableBody.appendChild(row);
+                    });
+                }
+
+                // Render Cash Movement Table
+                cashMovementTableBody.innerHTML = '';
+                if (filteredCashMovements.length === 0) {
+                    cashMovementTableBody.innerHTML = `<tr id="noCashMovementMessage"><td colspan="4" class="px-6 py-4 whitespace-nowrap text-center text-gray-500">No hay movimientos de caja en el período seleccionado.</td></tr>`;
+                } else {
+                    // Group sales and annulled sales
+                    let totalSalesAmount = 0;
+                    let totalAnnulledSalesAmount = 0;
+                    filteredCashMovements.forEach(movement => {
+                        if (movement.type === 'Venta Realizada') {
+                            totalSalesAmount += movement.amount;
+                        } else if (movement.type === 'Venta Anulada') {
+                            totalAnnulledSalesAmount += movement.amount; // amount is already negative for annulled sales
+                        }
+                    });
+
+                    // Add grouped sales and annulled sales if they exist
+                    if (totalSalesAmount > 0) {
+                        const salesRow = document.createElement('tr');
+                        salesRow.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Ventas Totales</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600">$${totalSalesAmount.toFixed(2)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Suma de todas las ventas realizadas.</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"></td>
+                        `;
+                        cashMovementTableBody.appendChild(salesRow);
+                    }
+                    if (totalAnnulledSalesAmount < 0) { // Only show if there are actual annulled sales
+                        const annulledSalesRow = document.createElement('tr');
+                        annulledSalesRow.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Ventas Anuladas</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-red-600">-$${Math.abs(totalAnnulledSalesAmount).toFixed(2)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Suma de todas las ventas anuladas.</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"></td>
+                        `;
+                        cashMovementTableBody.appendChild(annulledSalesRow);
+                    }
+
+
+                    // Add other individual movements
+                    filteredCashMovements.filter(movement => 
+                        movement.type !== 'Venta Realizada' && movement.type !== 'Venta Anulada'
+                    ).forEach(movement => {
+                        const row = document.createElement('tr');
+                        const movementTypeClass = movement.amount >= 0 ? 'text-green-600' : 'text-red-600';
+                        const formattedAmount = movement.amount >= 0 ? `$${movement.amount.toFixed(2)}` : `-$${Math.abs(movement.amount).toFixed(2)}`;
+                        row.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${movement.type}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm ${movementTypeClass}">${formattedAmount}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${movement.description}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(movement.timestamp).toLocaleDateString('es-ES')}</td>
+                        `;
+                        cashMovementTableBody.appendChild(row);
+                    });
+
+                    // If after grouping, there are no other movements, display the no movement message
+                    if (cashMovementTableBody.children.length === 0) {
+                        cashMovementTableBody.innerHTML = `<tr id="noCashMovementMessage"><td colspan="4" class="px-6 py-4 whitespace-nowrap text-center text-gray-500">No hay movimientos de caja en el período seleccionado.</td></tr>`;
+                    }
+                }
+            }
+
+            financeDateFrom.addEventListener('change', updateFinancesData);
+            financeDateTo.addEventListener('change', updateFinancesData);
+            clearFinanceFilters.addEventListener('click', () => {
+                financeDateFrom.value = '';
+                financeDateTo.value = '';
+                updateFinancesData();
+            });
+
+            // --- Charting with Chart.js ---
+            function initCharts() {
+                const salesCtx = document.getElementById('salesPerformanceChart').getContext('2d');
+                salesPerformanceChart = new Chart(salesCtx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Ventas Diarias',
+                            data: [],
+                            borderColor: 'rgb(75, 192, 192)',
+                            tension: 0.1,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Monto de Venta ($)'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Fecha'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                });
+
+                const topProductsCtx = document.getElementById('topProductsChart').getContext('2d');
+                topProductsChart = new Chart(topProductsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Cantidad Vendida',
+                            data: [],
+                            backgroundColor: [
+                                'rgba(255, 99, 132, 0.6)',
+                                'rgba(54, 162, 235, 0.6)',
+                                'rgba(255, 206, 86, 0.6)',
+                                'rgba(75, 192, 192, 0.6)',
+                                'rgba(153, 102, 255, 0.6)'
+                            ],
+                            borderColor: [
+                                'rgba(255, 99, 132, 1)',
+                                'rgba(54, 162, 235, 1)',
+                                'rgba(255, 206, 86, 1)',
+                                'rgba(75, 192, 192, 1)',
+                                'rgba(153, 102, 255, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Unidades Vendidas'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Producto'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                });
+            }
+
+            function updateSalesPerformanceChart(filteredSales) {
+                const salesByDate = {};
+                filteredSales.forEach(sale => {
+                    const date = new Date(sale.timestamp).toLocaleDateString('es-ES');
+                    salesByDate[date] = (salesByDate[date] || 0) + sale.total;
+                });
+
+                const sortedDates = Object.keys(salesByDate).sort((a, b) => {
+                    // Parse date strings to Date objects for correct comparison
+                    const dateA = new Date(a.split('/').reverse().join('-')); // Format 'DD/MM/YYYY' to 'YYYY-MM-DD'
+                    const dateB = new Date(b.split('/').reverse().join('-'));
+                    return dateA - dateB;
+                });
+                const salesData = sortedDates.map(date => salesByDate[date]);
+
+                salesPerformanceChart.data.labels = sortedDates;
+                salesPerformanceChart.data.datasets[0].data = salesData;
+                salesPerformanceChart.update();
+            }
+
+            function updateTopProductsChart(filteredSales) {
+                const productSales = {};
+                filteredSales.forEach(sale => {
+                    sale.items.forEach(item => {
+                        productSales[item.name] = (productSales[item.name] || 0) + item.quantity;
+                    });
+                });
+
+                const sortedProducts = Object.entries(productSales)
+                    .sort(([, a], [, b]) => b - a)
+                    .slice(0, 5); // Get top 5
+
+                const productNames = sortedProducts.map(([name]) => name);
+                const productQuantities = sortedProducts.map(([, quantity]) => quantity);
+
+                topProductsChart.data.labels = productNames;
+                topProductsChart.data.datasets[0].data = productQuantities;
+                topProductsChart.update();
+            }
+
+            // --- Settings Tab Logic ---
+            function showSettingsSection(sectionId) {
+                settingsContents.forEach(content => {
+                    content.classList.add('hidden');
+                    content.classList.remove('active');
+                });
+                settingsNavButtons.forEach(button => {
+                    button.classList.remove('bg-gray-100', 'font-semibold');
+                    button.classList.add('font-normal');
+                });
+
+                document.getElementById(sectionId).classList.remove('hidden');
+                document.getElementById(sectionId).classList.add('active');
+                document.querySelector(`.settings-nav-button[data-settings-target="${sectionId}"]`).classList.add('bg-gray-100', 'font-semibold');
+                document.querySelector(`.settings-nav-button[data-settings-target="${sectionId}"]`).classList.remove('font-normal');
+            }
+
+            settingsNavButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    showSettingsSection(button.dataset.settingsTarget);
+                });
+            });
+
+            // Inventory Settings: Low Stock Threshold
+            lowStockThresholdInput.value = lowStockThreshold; // Initial display
+            saveLowStockThreshold.addEventListener('click', () => {
+                const newThreshold = parseInt(lowStockThresholdInput.value);
+                if (!isNaN(newThreshold) && newThreshold >= 0) {
+                    lowStockThreshold = newThreshold;
+                    localStorage.setItem('lowStockThreshold', newThreshold);
+                    showMessage('Umbral de stock bajo guardado.', 'green');
+                    updateLowStockCount(); // Update dashboard metric
+                    renderInventoryTable(); // Re-render inventory to reflect new low stock colors
+                } else {
+                    showMessage('Por favor, ingresa un número válido para el umbral de stock.', 'red');
+                }
+            });
+
+            // Interface Settings: Color Palette
+            function applyColorPalette(paletteName) {
+                const palette = colorPalettes[paletteName];
+                if (palette) {
+                    for (const [prop, value] of Object.entries(palette)) {
+                        document.documentElement.style.setProperty(prop, value);
+                    }
+                    localStorage.setItem('selectedColorPalette', paletteName);
+                    // Update active radio button
+                    colorPaletteRadios.forEach(radio => {
+                        if (radio.value === paletteName) {
+                            radio.checked = true;
+                        } else {
+                            radio.checked = false;
+                        }
+                    });
+                }
+            }
+
+            colorPaletteRadios.forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    applyColorPalette(e.target.value);
+                });
+            });
+
+            // Interface Settings: Logo Upload
+            function updateLogoDisplay(logoSrc) {
+                if (logoSrc) {
+                    sidebarLogo.src = logoSrc;
+                    sidebarLogo.classList.remove('hidden');
+                    sidebarLogo.classList.add('block'); // Ensure it's block for display purposes
+                    sidebarLogo.style.opacity = '1';
+                    sidebarLogo.style.transform = 'scale(1)';
+                    // Hide default icon/title on sidebar if logo is present
+                    sidebarIcon.style.opacity = '0';
+                    sidebarIcon.classList.add('hidden');
+                    sidebarTitle.style.opacity = '0';
+                    sidebarTitle.classList.add('hidden');
+                    
+                    logoPreview.src = logoSrc;
+                    logoPreview.classList.remove('hidden');
+                    logoNoPreview.classList.add('hidden');
+                } else {
+                    sidebarLogo.classList.add('hidden');
+                    sidebarLogo.classList.remove('block'); // Remove block if no logo
+                    sidebarLogo.style.opacity = '0';
+                    sidebarLogo.style.transform = 'scale(0.8)';
+                    // Show default icon/title on sidebar if no logo is present
+                    sidebarIcon.classList.remove('hidden');
+                    sidebarIcon.style.opacity = '1';
+                    sidebarTitle.classList.remove('hidden');
+                    sidebarTitle.style.opacity = '1';
+
+                    logoPreview.src = '';
+                    logoPreview.classList.add('hidden');
+                    logoNoPreview.classList.remove('hidden');
+                }
+                // Re-adjust layout after logo change to ensure correct visibility rules are applied
+                adjustMainContentLayout();
+            }
+
+            applyLogoButton.addEventListener('click', () => {
+                let logoToSave = '';
+                if (logoUploadFile.files.length > 0) {
+                    const file = logoUploadFile.files[0];
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        logoToSave = e.target.result;
+                        localStorage.setItem('customLogo', logoToSave);
+                        updateLogoDisplay(logoToSave);
+                        showMessage('Logo subido exitosamente.', 'green');
+                    };
+                    reader.readAsDataURL(file);
+                } else if (logoUploadURL.value.trim()) {
+                    logoToSave = logoUploadURL.value.trim();
+                    localStorage.setItem('customLogo', logoToSave);
+                    updateLogoDisplay(logoToSave);
+                    showMessage('URL de logo aplicada.', 'green');
+                } else {
+                    showMessage('Por favor, selecciona un archivo o introduce una URL para el logo.', 'yellow');
+                }
+            });
+
+            removeLogoButton.addEventListener('click', () => {
+                localStorage.removeItem('customLogo');
+                updateLogoDisplay('');
+                logoUploadFile.value = ''; // Clear file input
+                logoUploadURL.value = ''; // Clear URL input
+                showMessage('Logo eliminado.', 'green');
+            });
+
+            // New: PDV Name Setting Logic
+            savePdvNameButton.addEventListener('click', () => {
+                const newPdvName = pdvNameInput.value.trim();
+                if (newPdvName) {
+                    pdvName = newPdvName;
+                    localStorage.setItem('pdvName', newPdvName);
+                    sidebarTitle.textContent = newPdvName; // Update sidebar title instantly
+                    showMessage('Nombre del Punto de Venta guardado.', 'green');
+                } else {
+                    showMessage('El nombre del Punto de Venta no puede estar vacío.', 'red');
+                }
+            });
+
+            // Function to apply all saved settings on page load
+            function applySavedSettings() {
+                // Apply color palette
+                const savedColorPalette = localStorage.getItem('selectedColorPalette') || 'blue';
+                applyColorPalette(savedColorPalette);
+
+                // Apply logo
+                const savedLogo = localStorage.getItem('customLogo');
+                updateLogoDisplay(savedLogo);
+
+                // Set low stock threshold input value
+                lowStockThresholdInput.value = lowStockThreshold;
+
+                // Apply PDV Name
+                pdvName = localStorage.getItem('pdvName') || 'PDV Pro';
+                sidebarTitle.textContent = pdvName;
+                pdvNameInput.value = pdvName;
+            }
+
+            // Initial render and data updates
+            // These calls are now conditionally executed after cash modal check
+            // and should be updated within the `if (initialCashSet)` block or `startDayButton` click
+            // to avoid rendering before the app is "started".
+            // However, for consistency and immediate feedback, we'll keep them here
+            // assuming the initial cash setup is handled and state is ready.
+            renderSalesProducts();
+            renderInventoryTable();
+            updateDashboardData();
+            populateInventoryCategoryFilter();
+            renderCategoryButtons(); // Initial render of category buttons in sales tab
+            updateFinancesData(); // Initial call to display finances
+            renderMovementsLog(); // Initial call to display movements
+        });
+    </script>
+</body>
+</html>
